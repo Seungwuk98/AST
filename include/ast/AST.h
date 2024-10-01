@@ -4,6 +4,7 @@
 #include "ast/ASTBase.h"
 #include "ast/ASTKindProperty.h"
 #include "ast/ASTPrinter.h"
+#include "ast/ASTWalker.h"
 #include "llvm/Support/Casting.h"
 
 namespace ast {
@@ -62,9 +63,24 @@ public:
   void print(ASTPrinter &printer) const;
   void dump() const;
 
+  template <typename Fn, WalkOrder Order = WalkOrder::PostOrder>
+  WalkResult walk(Fn &&fn) const {
+    ASTWalker walker(Order);
+    walker.addFn(std::forward<Fn>(fn));
+    return walker.Walk(*this);
+  }
+
 private:
   ASTImpl *impl;
 };
+
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const AST &ast) {
+  ast.print(os);
+  return os;
+}
+inline std::ostream &operator<<(std::ostream &os, const AST &ast) {
+  return os << ast.toString();
+}
 
 } // namespace ast
 

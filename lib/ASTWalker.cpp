@@ -41,4 +41,14 @@ WalkResult ASTWalker::Walk(AST ast) {
   return WalkResult::success();
 }
 
+WalkResult ASTWalker::walkChildren(AST ast) {
+  WalkResult result;
+  ast.walkChildren([&result, this](AST child) {
+    if (!result.isSuccess())
+      return;
+    result = Walk(child);
+  });
+  return result;
+}
+
 } // namespace ast

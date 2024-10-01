@@ -2,11 +2,11 @@
 #include "TestAST.h"
 #include "doctest/doctest.h"
 
-TEST_SUITE("AST_TEST_SUITE") {}
+TEST_SUITE("ast test suite") {}
 
 namespace ast::test {
 
-TEST_CASE("AST Creation Test" * doctest::test_suite("AST_TEST_SUITE")) {
+TEST_CASE("AST Creation Test" * doctest::test_suite("ast test suite")) {
   ASTContext ctx;
   ctx.GetOrRegisterASTSet<TestASTSet>();
 
@@ -32,7 +32,32 @@ TEST_CASE("AST Creation Test" * doctest::test_suite("AST_TEST_SUITE")) {
   }
 }
 
-TEST_CASE("AST Equality Test" * doctest::test_suite("AST_TEST_SUITE")) {
+TEST_CASE("AST Walk Test" * doctest::test_suite("ast test suite")) {
+  ASTContext ctx;
+  ctx.GetOrRegisterASTSet<TestASTSet>();
+
+  SUBCASE("Simple walk test") {
+    auto testAST1 = TestAST1::create(&ctx, 1, 2);
+    auto testAST2 = TestAST1::create(&ctx, 3, 4);
+    auto testAST3 = TestAST1::create(&ctx, 5, 6);
+    auto testIf = TestIf::create(&ctx, testAST1, testAST2, testAST3);
+
+    llvm::SmallVector<AST> asts;
+    auto walkResult = testIf.walk([&asts](AST ast) {
+      asts.push_back(ast);
+      return WalkResult::success();
+    });
+
+    CHECK(walkResult.isSuccess());
+    CHECK_EQ(asts.size(), 4);
+    CHECK_EQ(asts[0], testAST1);
+    CHECK_EQ(asts[1], testAST2);
+    CHECK_EQ(asts[2], testAST3);
+    CHECK_EQ(asts[3], testIf);
+  }
+}
+
+TEST_CASE("AST Equality Test" * doctest::test_suite("ast test suite")) {
   ASTContext ctx;
   ctx.GetOrRegisterASTSet<TestASTSet>();
 
