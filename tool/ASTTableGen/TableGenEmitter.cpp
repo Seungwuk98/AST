@@ -27,7 +27,6 @@ bool ASTDeclGenMain(llvm::raw_ostream &OS, llvm::RecordKeeper &Records) {
     astDeclModels.emplace_back(std::move(astDeclModel));
   }
 
-  llvm::errs() << "Debug\n";
   cxx::ComponentPrinter printer(OS);
 
   /// Print AST Names
@@ -203,7 +202,7 @@ TableGenEmitter::getTypePairByDefInit(const llvm::DefInit *defInit) {
     if (viewTypeStrOpt)
       viewType = cxx::RawType::create(context, *viewTypeStrOpt, typeArgs);
     else
-      viewType = cxx::createConstReferenceType(context, viewType);
+      viewType = cxx::createConstReferenceType(context, paramType);
     return {std::make_pair(paramType, viewType), true};
   }
 

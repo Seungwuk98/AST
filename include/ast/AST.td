@@ -15,7 +15,7 @@ class AST {
   code extraClassDeclaration = "";
   code extraClassDefinition = "";
 
-  string description = "";
+  code description = "";
 
   dag treeMember = (ins);
   dag tag = (ins);
@@ -44,7 +44,7 @@ class SmallVector<DataFormat element> : DataFormat {
 }
 
 class Optional<DataFormat element> : DataFormat {
-  let paramType = "::llvm::Optional";
+  let paramType = "::std::optional";
   DataFormat elementType = element;
 }
 

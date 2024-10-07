@@ -1,11 +1,14 @@
 #ifndef AST_DATA_HANDLER_H
 #define AST_DATA_HANDLER_H
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include <functional>
 #include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace ast {
 class AST;
@@ -85,6 +88,48 @@ template <typename T> struct ASTDataHandler<std::optional<T>> {
   static void walk(const Optional &data, const std::function<void(AST)> &fn) {
     if (data)
       ASTDataHandler<std::remove_cvref_t<T>>::walk(*data, fn);
+  }
+};
+
+template <typename T>
+bool vectorIsEqualImpl(llvm::ArrayRef<T> lhs, llvm::ArrayRef<T> rhs) {
+  if (lhs.size() != rhs.size())
+    return false;
+  for (const auto &[l, r] : llvm::zip(lhs, rhs)) {
+    if (!ASTDataHandler<std::remove_cvref_t<T>>::isEqual(l, r))
+      return false;
+  }
+  return true;
+}
+
+template <typename T>
+void vectorWalkImpl(llvm::ArrayRef<T> data,
+                    const std::function<void(AST)> &fn) {
+  for (const auto &elem : data)
+    ASTDataHandler<std::remove_cvref_t<T>>::walk(elem, fn);
+}
+
+template <typename T> struct ASTDataHandler<std::vector<T>> {
+  using Vector = std::vector<T>;
+
+  static bool isEqual(const Vector &lhs, const Vector &rhs) {
+    return vectorIsEqualImpl<T>(lhs, rhs);
+  }
+
+  static void walk(const Vector &data, const std::function<void(AST)> &fn) {
+    vectorWalkImpl<T>(data, fn);
+  }
+};
+
+template <typename T> struct ASTDataHandler<llvm::SmallVector<T>> {
+  using Vector = llvm::SmallVector<T>;
+
+  static bool isEqual(const Vector &lhs, const Vector &rhs) {
+    return vectorIsEqualImpl<T>(lhs, rhs);
+  }
+
+  static void walk(const Vector &data, const std::function<void(AST)> &fn) {
+    vectorWalkImpl<T>(data, fn);
   }
 };
 

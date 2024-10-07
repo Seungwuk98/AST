@@ -36,7 +36,7 @@ public:
   ASTImpl *getImpl() const { return impl; }
   void *getImplAsVoidPointer() const { return static_cast<void *>(impl); }
 
-  template <typename U> bool isa() const { return llvm::isa<U>(*this); }
+  template <typename... U> bool isa() const { return llvm::isa<U...>(*this); }
   template <typename U> U cast() const { return llvm::cast<U>(*this); }
   template <typename U> U cast_if_present() const {
     return llvm::cast_if_present<U>(*this);
