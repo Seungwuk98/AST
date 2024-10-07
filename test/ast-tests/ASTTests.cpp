@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "TestAST.h"
+#include "TestAST2.h"
 #include "doctest/doctest.h"
 
 TEST_SUITE("ast test suite") {}
@@ -80,6 +81,24 @@ TEST_CASE("AST Equality Test" * doctest::test_suite("ast test suite")) {
 
     CHECK(testIf1.isEqual(testIf2));
     CHECK_FALSE(testIf1.isEqual(testIf3));
+  }
+}
+
+TEST_CASE("TableGen AST" * doctest::test_suite("ast test suite")) {
+  ASTContext ctx;
+  ctx.GetOrRegisterASTSet<TestASTSet>();
+
+  SUBCASE("TestFor") {
+    auto one = Integer::create(&ctx, 1);
+    auto two = Integer::create(&ctx, 2);
+    auto three = Integer::create(&ctx, 3);
+    auto four = Integer::create(&ctx, 4);
+    auto testFor = TestFor::create(&ctx, "iter", one, two, three, four);
+    testFor.setHasBraceTag(true);
+
+    CHECK_EQ(testFor.toString(), R"(for (iter from 1 to 2 step 3) {
+  4
+})");
   }
 }
 

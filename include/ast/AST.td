@@ -1,20 +1,24 @@
 #ifndef AST_TD
 #define AST_TD
 
+def ins;
+
 class ASTSet {
   string setName;
   string namespace;
 }
 
 class AST {
-  string namespace;
+  string namespace = "::ast";
   string parent = "::ast::AST";
 
-  code extraClassDeclaration;
-  code extraClassDefinition;
+  code extraClassDeclaration = "";
+  code extraClassDefinition = "";
 
-  dag treeMember;
-  dag tag;
+  string description = "";
+
+  dag treeMember = (ins);
+  dag tag = (ins);
 }
 
 class DataFormat {
@@ -68,8 +72,6 @@ class
   bit viewConstRef = cr;
 }
 
-def ins;
-
 def SizeT : UserDefineType<"size_t">;
 def Bool : UserDefineType<"bool">;
 def I8 : UserDefineType<"::std::int8_t">;
@@ -95,4 +97,5 @@ def Float : UserDefineType<"float">;
 def Double : UserDefineType<"double">;
 def LongDouble : UserDefineType<"long double">;
 
+def ASTType : UserDefineType<"::ast::AST">;
 #endif // AST_TD

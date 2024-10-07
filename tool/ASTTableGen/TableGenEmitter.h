@@ -35,6 +35,9 @@ public:
   const cxx::Type *getASTType() const { return astType; }
   const cxx::Type *getASTImplType() const { return astImplType; }
   const cxx::Type *getASTContextType() const { return astContextType; }
+  const cxx::Type *getASTContextPointerType() const {
+    return astContextPointerType;
+  }
   const cxx::Type *getASTSetType() const { return astSetType; }
   const cxx::Type *getASTPrinterRef() const { return astPrinterRef; }
   const cxx::Type *getVoidType() const { return voidType; }
@@ -50,6 +53,7 @@ private:
   const cxx::Type *astType;
   const cxx::Type *astImplType;
   const cxx::Type *astContextType;
+  const cxx::Type *astContextPointerType;
   const cxx::Type *astSetType;
   const cxx::Type *astPrinterRef;
   const cxx::Type *voidType;

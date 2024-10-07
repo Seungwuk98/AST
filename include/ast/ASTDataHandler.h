@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -14,6 +15,14 @@ namespace ast::detail {
 template <typename T, typename Enable = void> struct ASTDataHandler {
   /// static bool isEqual(const T &lhs, const T &rhs);
   /// static void walk(const T &data, std::function<void(AST)>);
+};
+
+template <> struct ASTDataHandler<std::string> {
+  static bool isEqual(const std::string &lhs, const std::string &rhs) {
+    return lhs == rhs;
+  }
+  static void walk(const std::string &data,
+                   const std::function<void(AST)> &fn) {}
 };
 
 template <typename T>

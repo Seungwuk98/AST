@@ -46,11 +46,14 @@ void Class::print(ComponentPrinter &printer) const {
       }
       ComponentPrinter::IndentAddScope indent(printer, 2);
       for (const auto &member : members)
-        std::visit([&printer](const auto &member) { member->print(printer); },
-                   member);
+        std::visit(
+            [&printer](const auto &member) {
+              member->print(printer.PrintLine());
+            },
+            member);
     }
 
-    (impl.Blocks.empty() ? printer.Line() : printer.OS()) << '}';
+    (!impl.Blocks.empty() ? printer.Line() : printer.OS()) << '}';
   }
   printer.OS() << ';';
 }
@@ -58,7 +61,7 @@ void Class::print(ComponentPrinter &printer) const {
 void Class::Method::print(ComponentPrinter &printer) const {
   auto printFunction = [&]() {
     printer.OS() << getReturnType()->toString() << ' ' << getName() << '(';
-    for (auto I = getParams().begin(), E = getParams().end(); I != E;) {
+    for (auto I = getParams().begin(), E = getParams().end(); I != E; ++I) {
       if (I != getParams().begin())
         printer.OS() << ", ";
       const auto &[paramName, paramType] = *I;
@@ -72,7 +75,7 @@ void Class::Method::print(ComponentPrinter &printer) const {
         if constexpr (std::is_same_v<T, InstanceAttribute>) {
           printFunction();
           if (attr.IsConst)
-            printer.OS() << " const";
+            printer.OS() << " const ";
           bodyCodePrint(printer, attr.Body);
         } else if constexpr (std::is_same_v<T, VirtualAttribute>) {
           printer.OS() << "virtual ";
@@ -87,7 +90,7 @@ void Class::Method::print(ComponentPrinter &printer) const {
             printer.OS() << " = 0;";
         } else if constexpr (std::is_same_v<T, OverrideAttribute>) {
           printFunction();
-          printer.OS() << " override";
+          printer.OS() << " override ";
           if (attr.Body)
             bodyCodePrint(printer, *attr.Body);
           else
@@ -109,7 +112,7 @@ void Class::Method::print(ComponentPrinter &printer) const {
 
 void Class::Constructor::print(ComponentPrinter &printer) const {
   printer.OS() << getName() << '(';
-  for (auto I = getParams().begin(), E = getParams().end(); I != E;) {
+  for (auto I = getParams().begin(), E = getParams().end(); I != E; ++I) {
     if (I != getParams().begin())
       printer.OS() << ", ";
     const auto &[paramName, paramType] = *I;
@@ -120,7 +123,7 @@ void Class::Constructor::print(ComponentPrinter &printer) const {
     printer.OS() << " : ";
     const auto &[initializers, body] = *getImplement();
     if (!initializers.empty()) {
-      for (auto I = initializers.begin(), E = initializers.end(); I != E;) {
+      for (auto I = initializers.begin(), E = initializers.end(); I != E; ++I) {
         if (I != initializers.begin())
           printer.OS() << ", ";
         const auto &[fieldName, initExpr] = *I;
@@ -153,7 +156,7 @@ void Class::RawCode::print(ComponentPrinter &printer) const {
 
 void Class::Friend::print(ComponentPrinter &printer) const {
   printer.OS() << "friend " << (isClass() ? "class " : "struct ")
-               << getFriendType() << ';';
+               << getFriendType()->toString() << ';';
 }
 
 void VarDecl::print(ComponentPrinter &printer) const {
@@ -188,8 +191,12 @@ void Function::print(ComponentPrinter &printer) const {
   default:
     break;
   }
-  printer.OS() << getReturnType()->toString() << ' ' << getName() << '(';
-  for (auto I = getParams().begin(), E = getParams().end(); I != E;) {
+  printer.OS() << getReturnType()->toString() << ' ';
+  if (getNamespaces())
+    for (const auto &access : *getNamespaces())
+      printer.OS() << access << "::";
+  printer.OS() << getName() << '(';
+  for (auto I = getParams().begin(), E = getParams().end(); I != E; ++I) {
     if (I != getParams().begin())
       printer.OS() << ", ";
     const auto &[paramName, paramType] = *I;
@@ -206,7 +213,7 @@ void ClassConstructor::print(ComponentPrinter &printer) const {
   for (const auto &access : getNamespaces())
     printer.OS() << access << "::";
   printer.OS() << getName() << "::" << getName() << '(';
-  for (auto I = getParams().begin(), E = getParams().end(); I != E;) {
+  for (auto I = getParams().begin(), E = getParams().end(); I != E; ++I) {
     if (I != getParams().begin())
       printer.OS() << ", ";
     const auto &[paramName, paramType] = *I;
@@ -217,7 +224,7 @@ void ClassConstructor::print(ComponentPrinter &printer) const {
     printer.OS() << " : ";
     for (auto I = getBody().Initializers.begin(),
               E = getBody().Initializers.end();
-         I != E;) {
+         I != E; ++I) {
       if (I != getBody().Initializers.begin())
         printer.OS() << ", ";
       const auto &[fieldName, initExpr] = *I;

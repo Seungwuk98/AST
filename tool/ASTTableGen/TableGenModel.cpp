@@ -5,6 +5,8 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include <llvm-18/llvm/Support/raw_ostream.h>
+#include <numeric>
 
 namespace ast::tblgen {
 
@@ -125,7 +127,7 @@ createTagMemberSetterMethod(TableGenEmitter *emitter, std::size_t idx,
   llvm::raw_string_ostream ss(setterName);
   ss << "set" << llvm::toUpper(tagName[0]) << tagName.drop_front() << "Tag";
 
-  auto setterBody = llvm::formatv("set::get<{0}>(astTag) = {1};", idx,
+  auto setterBody = llvm::formatv("std::get<{0}>(astTag) = {1};", idx,
                                   cast2ParamTypeExpr(tagName, paramType));
   cxx::Class::Method::InstanceAttribute setterAttr{.IsConst = false,
                                                    .Body = {setterBody.str()}};
@@ -224,7 +226,7 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
   cxx::Class::Friend *friendASTBuilder = cxx::Class::Friend::create(
       emitter->getContext(), emitter->getASTBuilderType());
   cxx::Class::Friend *friendAST =
-      cxx::Class::Friend::create(emitter->getContext(), emitter->getASTType());
+      cxx::Class::Friend::create(emitter->getContext(), astType);
 
   /// constructor
   llvm::SmallVector<cxx::DeclPair> params;
@@ -239,11 +241,12 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
 
   /// create function
   llvm::SmallVector<cxx::DeclPair> createParams{
-      {"context", emitter->getASTContextType()}};
+      {"context", emitter->getASTContextPointerType()}};
   createParams.append(params.begin(), params.end());
 
   cxx::Class::Method *createMethod = cxx::Class::Method::create(
-      emitter->getContext(), astImplTypePointer, "create", createParams, {});
+      emitter->getContext(), astImplTypePointer, "create", createParams,
+      cxx::Class::Method::StaticAttribute{});
 
   /// private block
   llvm::SmallVector<cxx::Class::ClassMember> privateMembers;
@@ -304,7 +307,9 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
   for (const auto &[idx, paramName, viewType] :
        llvm::enumerate(model.TreeMemberParamNames, treeMemberViewTypes)) {
     auto getterName = getGetterName(paramName);
-    auto getterBody = llvm::formatv("return getImpl()->get{0}();", paramName);
+    auto getterBody =
+        llvm::formatv("return getImpl()->get{0}{1}();",
+                      llvm::toUpper(paramName[0]), paramName.drop_front());
     cxx::Class::Method::InstanceAttribute getterAttr{
         .IsConst = true, .Body = {getterBody.str()}};
     cxx::Class::Method *getter = cxx::Class::Method::create(
@@ -324,14 +329,16 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
     auto setterName = getSetterName(paramName) + "Tag";
 
     auto getterBody =
-        llvm::formatv("return getImpl()->get{0}Tag();", paramName);
+        llvm::formatv("return getImpl()->get{0}{1}Tag();",
+                      llvm::toUpper(paramName[0]), paramName.drop_front());
     cxx::Class::Method::InstanceAttribute getterAttr{
         .IsConst = true, .Body = {getterBody.str()}};
     cxx::Class::Method *getter = cxx::Class::Method::create(
         emitter->getContext(), viewType, getterName, std::nullopt, getterAttr);
 
-    auto setterBody = llvm::formatv("getImpl()->set{0}Tag({1});", paramName,
-                                    cast2ParamTypeExpr(paramName, paramType));
+    auto setterBody = llvm::formatv("getImpl()->set{0}{1}Tag({2});",
+                                    llvm::toUpper(paramName[0]),
+                                    paramName.drop_front(), paramName);
     cxx::Class::Method::InstanceAttribute setterAttr{
         .IsConst = false, .Body = {setterBody.str()}};
     cxx::Class::Method *setter = cxx::Class::Method::create(
@@ -354,9 +361,10 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
       {{"ast", astType}, {"printer", emitter->getASTPrinterRef()}},
       cxx::Class::Method::StaticAttribute{});
 
-  /// extra class declaration
-  cxx::Class::RawCode *extraClassDeclaration = cxx::Class::RawCode::create(
-      emitter->getContext(), model.ExtraClassDeclaration);
+  /// create function
+  cxx::Class::Method *astCreateFunc = cxx::Class::Method::create(
+      emitter->getContext(), astType, "create", createParams,
+      cxx::Class::Method::StaticAttribute{});
 
   /// public block
   llvm::SmallVector<cxx::Class::ClassMember> astPublicMembers;
@@ -368,7 +376,14 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
   astPublicMembers.append(astTagSetters.begin(), astTagSetters.end());
   astPublicMembers.emplace_back(astTraversalOrderMethod);
   astPublicMembers.emplace_back(astPrintMethod);
-  astPublicMembers.emplace_back(extraClassDeclaration);
+  astPublicMembers.emplace_back(astCreateFunc);
+
+  /// extra class declaration
+  if (!model.ExtraClassDeclaration.empty()) {
+    cxx::Class::RawCode *extraClassDeclaration = cxx::Class::RawCode::create(
+        emitter->getContext(), model.ExtraClassDeclaration);
+    astPublicMembers.emplace_back(extraClassDeclaration);
+  }
 
   cxx::Class::Block astPublicBlock{.Access = cxx::Class::AccessModifier::Public,
                                    .Members = astPublicMembers};
@@ -396,6 +411,90 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
   return std::unique_ptr<ASTDeclModel>(new ASTDeclModel(
       model.ASTName, astImplName, model.Namespace, model.Description,
       astClassDecl, astImplClassDecl, astClass, astImplClass));
+}
+
+std::unique_ptr<ASTDefModel> ASTDefModel::create(const DataModel &model) {
+  TableGenEmitter *emitter = model.Emitter;
+
+  std::string astImplName = (model.ASTName + "Impl").str();
+
+  cxx::Type *astType =
+      cxx::RawType::create(emitter->getContext(), model.ASTName, {});
+  cxx::Type *astImplType = cxx::RawType::create(
+      emitter->getContext(), (model.ASTName + "Impl").str(), {});
+  cxx::Type *astImplTypePointer =
+      cxx::PointerType::create(emitter->getContext(), astImplType);
+
+  llvm::SmallVector<const cxx::Type *> treeParamTypes;
+  llvm::SmallVector<const cxx::Type *> treeViewTypes;
+  treeParamTypes.reserve(model.TreeMemberParamNames.size());
+  treeViewTypes.reserve(model.TreeMemberParamNames.size());
+
+  for (const auto &[paramType, viewType] : model.TreeMemberTypePairs) {
+    treeParamTypes.emplace_back(paramType);
+    treeViewTypes.emplace_back(viewType);
+  }
+
+  llvm::SmallVector<cxx::DeclPair> param;
+  param.reserve(model.TreeMemberParamNames.size());
+  for (const auto &[paramName, viewType] :
+       llvm::zip(model.TreeMemberParamNames, treeViewTypes)) {
+    param.emplace_back(paramName, viewType);
+  }
+
+  /// ast create function
+  llvm::SmallVector<cxx::DeclPair> createParam{
+      {"context", emitter->getASTContextPointerType()}};
+
+  createParam.append(param.begin(), param.end());
+
+  std::string arguments;
+  llvm::raw_string_ostream ss(arguments);
+  for (const auto &paramName : model.TreeMemberParamNames)
+    ss << ", " << paramName;
+
+  auto createBody =
+      llvm::formatv("return Base::create(context{0});", arguments);
+
+  auto *astCreateFunc = cxx::Function::create(
+      emitter->getContext(), std::nullopt, cxx::Function::Access::None, astType,
+      llvm::SmallVector<std::string>{model.ASTName.str()}, "create",
+      createParam, cxx::BodyCode{createBody.str()});
+
+  /// ast impl create function
+  auto implCreateBody =
+      llvm::formatv("return context->Alloc<{0}>({1});", astImplName,
+                    llvm::join(model.TreeMemberParamNames, ", "));
+  auto *astImplCreateFunc = cxx::Function::create(
+      emitter->getContext(), std::nullopt, cxx::Function::Access::None,
+      astImplTypePointer, llvm::SmallVector<std::string>{astImplName}, "create",
+      createParam, cxx::BodyCode{implCreateBody.str()});
+
+  /// ast impl constructor
+  llvm::SmallVector<std::pair<std::string, std::string>> initializerList;
+  std::string initializeExpr;
+  llvm::raw_string_ostream initExprStream(initializeExpr);
+
+  for (const auto &[idx, paramName, paramType] :
+       llvm::enumerate(model.TreeMemberParamNames, treeParamTypes)) {
+    if (idx != 0)
+      initExprStream << ", ";
+    initExprStream << cast2ParamTypeExpr(paramName, paramType);
+  }
+  initializerList.emplace_back("astTreeMember", initializeExpr);
+
+  cxx::Class::Constructor::Implement constructorImplement{
+      .Initializers = initializerList,
+      .Body = {},
+  };
+  auto *astImplConstructor =
+      cxx::ClassConstructor::create(emitter->getContext(), std::nullopt,
+                                    astImplName, param, constructorImplement);
+
+  return std::unique_ptr<ASTDefModel>(
+      new ASTDefModel(model.ASTName, astImplName, model.Namespace,
+                      model.Description, model.ExtraClassDefinition,
+                      astImplCreateFunc, astImplConstructor, astCreateFunc));
 }
 
 } // namespace ast::tblgen

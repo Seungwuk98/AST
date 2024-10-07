@@ -24,8 +24,8 @@ struct ASTBuilder {
     return Class(impl);
   }
 
-  template <typename Class> static void registerAST(ASTContext *ctx) {
-    ctx->RegisterAST(ID::get<Class>(), ASTKindProperty::get<Class>());
+  template <typename... Class> static void registerAST(ASTContext *ctx) {
+    (ctx->RegisterAST(ID::get<Class>(), ASTKindProperty::get<Class>()), ...);
   }
 
   template <typename Class>

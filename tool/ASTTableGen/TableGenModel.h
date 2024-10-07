@@ -69,6 +69,9 @@ public:
   llvm::StringRef getClassImplName() const { return classImplName; }
   llvm::StringRef getNamespaceName() const { return namespaceName; }
   llvm::StringRef getDescription() const { return description; }
+  llvm::StringRef getExtraClassDefinition() const {
+    return extraClassDefinition;
+  }
 
   cxx::Function *getASTImplCreateFunction() const {
     return astImplCreateFunction;
@@ -80,24 +83,18 @@ public:
 
   void print(llvm::raw_ostream &OS) const;
 
-  class Builder {
-  public:
-    Builder(TableGenEmitter *emitter) : emitter(emitter) {}
-
-    std::unique_ptr<ASTDefModel> create(llvm::Record *record);
-
-  private:
-    TableGenEmitter *emitter;
-  };
+  static std::unique_ptr<ASTDefModel> create(const DataModel &model);
 
 private:
   ASTDefModel(llvm::StringRef className, llvm::StringRef classImplName,
               llvm::StringRef namespaceName, llvm::StringRef description,
+              llvm::StringRef extraClassDefinition,
               cxx::Function *astImplCreateFunction,
               cxx::ClassConstructor *astImplConstructor,
               cxx::Function *astCreateFunction)
       : className(className), classImplName(classImplName),
         namespaceName(namespaceName), description(description),
+        extraClassDefinition(extraClassDefinition),
         astImplCreateFunction(astImplCreateFunction),
         astImplConstructor(astImplConstructor),
         astCreateFunction(astCreateFunction) {}
@@ -106,6 +103,7 @@ private:
   std::string classImplName;
   std::string namespaceName;
   std::string description;
+  std::string extraClassDefinition;
   cxx::Function *astImplCreateFunction;
   cxx::ClassConstructor *astImplConstructor;
   cxx::Function *astCreateFunction;

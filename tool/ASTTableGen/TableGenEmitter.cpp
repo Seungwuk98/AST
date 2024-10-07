@@ -27,6 +27,7 @@ bool ASTDeclGenMain(llvm::raw_ostream &OS, llvm::RecordKeeper &Records) {
     astDeclModels.emplace_back(std::move(astDeclModel));
   }
 
+  llvm::errs() << "Debug\n";
   cxx::ComponentPrinter printer(OS);
 
   /// Print AST Names
@@ -40,7 +41,7 @@ bool ASTDeclGenMain(llvm::raw_ostream &OS, llvm::RecordKeeper &Records) {
   /// Print comma joined AST Names
   {
     cxx::ComponentPrinter::DefineScope scope(printer, "AST_TABLEGEN_ID_COMMA");
-    for (auto I = astDeclModels.begin(), E = astDeclModels.end(); I != E;) {
+    for (auto I = astDeclModels.begin(), E = astDeclModels.end(); I != E; ++I) {
       if (I != astDeclModels.begin())
         printer.OS() << ", ";
       printer.OS() << (*I)->getNamespaceName() << "::" << (*I)->getClassName()
@@ -71,7 +72,47 @@ bool ASTDeclGenMain(llvm::raw_ostream &OS, llvm::RecordKeeper &Records) {
 }
 
 bool ASTDefGenMain(llvm::raw_ostream &OS, llvm::RecordKeeper &Records) {
-  return false;
+  TableGenEmitter E(OS, Records);
+  std::vector<llvm::Record *> astRecords =
+      Records.getAllDerivedDefinitions("AST");
+
+  std::vector<std::unique_ptr<ASTDefModel>> astDefModels;
+  astDefModels.reserve(astRecords.size());
+
+  for (auto *R : astRecords) {
+    auto dataModelOpt = DataModel::create(&E, R);
+    if (!dataModelOpt)
+      return true; /// exit code 1
+
+    auto astDefModel = ASTDefModel::create(*dataModelOpt);
+    if (!astDefModel)
+      return true; /// exit code 1
+
+    astDefModels.emplace_back(std::move(astDefModel));
+  }
+
+  cxx::ComponentPrinter printer(OS);
+
+  /// Print AST Definitions
+  {
+    cxx::ComponentPrinter::DefineScope scope(printer, "AST_TABLEGEN_DEF");
+    for (const auto &defModel : astDefModels) {
+      printer.OS() << "DEFINE_TYPE_ID(" << defModel->getNamespaceName()
+                   << "::" << defModel->getClassName() << ")\n";
+    }
+
+    for (const auto &defModel : astDefModels) {
+      cxx::ComponentPrinter::NamespaceScope namespaceScope(
+          printer, defModel->getNamespaceName());
+      defModel->getASTImplCreateFunction()->print(printer);
+      defModel->getASTImplConstructor()->print(printer.PrintLine());
+      defModel->getASTCreateFunction()->print(printer.PrintLine());
+      printer.OS() << defModel->getExtraClassDefinition();
+      printer.Line();
+    }
+  }
+
+  return false; /// exit code 0
 }
 
 TableGenEmitter::TableGenEmitter(llvm::raw_ostream &os,
@@ -80,6 +121,7 @@ TableGenEmitter::TableGenEmitter(llvm::raw_ostream &os,
   astType = cxx::RawType::create(context, "::ast::AST", {});
   astImplType = cxx::RawType::create(context, "::ast::ASTImpl", {});
   astContextType = cxx::RawType::create(context, "::ast::ASTContext", {});
+  astContextPointerType = cxx::PointerType::create(context, astContextType);
   astSetType = cxx::RawType::create(context, "::ast::ASTSet", {});
   voidType = cxx::RawType::create(context, "void", {});
   autoType = cxx::RawType::create(context, "auto", {});
@@ -138,7 +180,7 @@ TableGenEmitter::getTypePairByDefInit(const llvm::DefInit *defInit) {
   std::optional<llvm::StringRef> viewTypeStrOpt =
       record->getValueAsOptionalString("viewType");
 
-  if (record->isSubClassOf("String")) {
+  if (record->getName() == "String") {
     auto *paramType = cxx::RawType::create(context, paramTypeStr, {});
     assert(viewTypeStrOpt);
     auto *viewType = cxx::RawType::create(context, *viewTypeStrOpt, {});
@@ -187,7 +229,6 @@ TableGenEmitter::getTypePairByDefInit(const llvm::DefInit *defInit) {
 
   if (record->isSubClassOf("UserDefineType")) {
     bool viewConstRef = record->getValueAsBit("viewConstRef");
-    assert(viewConstRef && viewTypeStrOpt);
     const cxx::Type *paramType =
         cxx::RawType::create(context, paramTypeStr, {});
     const cxx::Type *viewType;

@@ -1,4 +1,5 @@
 #include "TestAST.h"
+#include "TestAST2.h"
 #include "ast/ASTBuilder.h"
 #include "ast/ASTTypeID.h"
 
@@ -11,6 +12,10 @@ namespace ast::test {
 void TestASTSet::RegisterSet() {
   ASTBuilder::registerAST<TestAST1>(getContext());
   ASTBuilder::registerAST<TestIf>(getContext());
+  ASTBuilder::registerAST<
+#define AST_TABLEGEN_ID_COMMA
+#include "TestAST2.hpp.inc"
+      >(getContext());
 }
 
 TestAST1 TestAST1::create(ASTContext *ctx, int value1, int value2) {
