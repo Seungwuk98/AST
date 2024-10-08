@@ -13,6 +13,10 @@ public:
   llvm::raw_ostream &Line() {
     return os << '\n' << std::string(indentLevel, ' ');
   }
+  ASTPrinter &PrintLine() {
+    Line();
+    return *this;
+  }
 
   struct IndentScope {
     explicit IndentScope(ASTPrinter &printer, std::size_t indentLevel)

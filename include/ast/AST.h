@@ -6,6 +6,7 @@
 #include "ast/ASTPrinter.h"
 #include "ast/ASTWalker.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/SMLoc.h"
 
 namespace ast {
 class ASTBuilder;
@@ -14,11 +15,15 @@ class ASTImpl {
 public:
   ASTKindProperty *getProperty() const { return property; }
 
+  llvm::SMRange getLoc() const { return range; }
+
 private:
   friend class ::ast::ASTBuilder;
   void setProperty(ASTKindProperty *property) { this->property = property; }
+  void setLocation(llvm::SMRange range) { this->range = range; }
 
   ASTKindProperty *property{nullptr};
+  llvm::SMRange range;
 };
 
 class AST {
@@ -69,6 +74,8 @@ public:
     walker.addFn(std::forward<Fn>(fn));
     return walker.Walk(*this);
   }
+
+  llvm::SMRange getLoc() const { return impl->getLoc(); }
 
 private:
   ASTImpl *impl;

@@ -2,13 +2,14 @@
 #define AST_BUILDER_H
 
 #include "ast/ASTContext.h"
+#include "llvm/Support/SMLoc.h"
 
 namespace ast {
 
 class ASTImpl;
 struct ASTBuilder {
   template <typename Class, typename... Args>
-  static Class create(ASTContext *ctx, Args &&...args) {
+  static Class create(llvm::SMRange range, ASTContext *ctx, Args &&...args) {
     using ImplTy = typename Class::ImplTy;
 
     auto *kindProperty = ctx->GetASTKindProperty(ID::get<Class>());
@@ -20,6 +21,7 @@ struct ASTBuilder {
       impl = ImplTy::create(ctx, std::forward<Args>(args)...);
     }
     impl->setProperty(kindProperty);
+    impl->setLocation(range);
 
     return Class(impl);
   }

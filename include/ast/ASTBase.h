@@ -6,6 +6,7 @@
 #include "ast/ASTDataHandler.h"
 #include "ast/ASTPrinter.h"
 #include "ast/ASTTypeID.h"
+#include "llvm/Support/SMLoc.h"
 #include <type_traits>
 
 namespace ast {
@@ -22,8 +23,10 @@ public:
   ImplTy *getImpl() const { return static_cast<ImplTy *>(BaseType::getImpl()); }
 
   template <typename... Args>
-  static ConcreteType create(ASTContext *ctx, Args &&...args) {
-    return ASTBuilder::create<ConcreteType>(ctx, std::forward<Args>(args)...);
+  static ConcreteType create(llvm::SMRange range, ASTContext *ctx,
+                             Args &&...args) {
+    return ASTBuilder::create<ConcreteType>(range, ctx,
+                                            std::forward<Args>(args)...);
   }
 
   template <typename T>

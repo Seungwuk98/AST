@@ -128,6 +128,7 @@ TableGenEmitter::TableGenEmitter(llvm::raw_ostream &os,
   astBuilderType = cxx::RawType::create(context, "::ast::ASTBuilder", {});
   astPrinterRef = cxx::ReferenceType::create(
       context, cxx::RawType::create(context, "::ast::ASTPrinter", {}));
+  llvmSMRangeType = cxx::RawType::create(context, "::llvm::SMRange", {});
 }
 TableGenEmitter::~TableGenEmitter() { delete context; }
 

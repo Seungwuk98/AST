@@ -362,8 +362,12 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
       cxx::Class::Method::StaticAttribute{});
 
   /// create function
+  llvm::SmallVector<cxx::DeclPair> astCreateParam{
+      {"loc", emitter->getllmvSMRangeType()},
+      {"context", emitter->getASTContextPointerType()}};
+  astCreateParam.append(params.begin(), params.end());
   cxx::Class::Method *astCreateFunc = cxx::Class::Method::create(
-      emitter->getContext(), astType, "create", createParams,
+      emitter->getContext(), astType, "create", astCreateParam,
       cxx::Class::Method::StaticAttribute{});
 
   /// public block
@@ -444,6 +448,7 @@ std::unique_ptr<ASTDefModel> ASTDefModel::create(const DataModel &model) {
 
   /// ast create function
   llvm::SmallVector<cxx::DeclPair> createParam{
+      {"loc", emitter->getllmvSMRangeType()},
       {"context", emitter->getASTContextPointerType()}};
 
   createParam.append(param.begin(), param.end());
@@ -454,7 +459,7 @@ std::unique_ptr<ASTDefModel> ASTDefModel::create(const DataModel &model) {
     ss << ", " << paramName;
 
   auto createBody =
-      llvm::formatv("return Base::create(context{0});", arguments);
+      llvm::formatv("return Base::create(loc, context{0});", arguments);
 
   auto *astCreateFunc = cxx::Function::create(
       emitter->getContext(), std::nullopt, cxx::Function::Access::None, astType,
@@ -462,13 +467,17 @@ std::unique_ptr<ASTDefModel> ASTDefModel::create(const DataModel &model) {
       createParam, cxx::BodyCode{createBody.str()});
 
   /// ast impl create function
+  llvm::SmallVector<cxx::DeclPair> implCreateParam{
+      {"context", emitter->getASTContextPointerType()}};
+  implCreateParam.append(param.begin(), param.end());
+
   auto implCreateBody =
       llvm::formatv("return context->Alloc<{0}>({1});", astImplName,
                     llvm::join(model.TreeMemberParamNames, ", "));
   auto *astImplCreateFunc = cxx::Function::create(
       emitter->getContext(), std::nullopt, cxx::Function::Access::None,
       astImplTypePointer, llvm::SmallVector<std::string>{astImplName}, "create",
-      createParam, cxx::BodyCode{implCreateBody.str()});
+      implCreateParam, cxx::BodyCode{implCreateBody.str()});
 
   /// ast impl constructor
   llvm::SmallVector<std::pair<std::string, std::string>> initializerList;
