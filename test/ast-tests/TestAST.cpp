@@ -18,8 +18,9 @@ void TestASTSet::RegisterSet() {
       >(getContext());
 }
 
-TestAST1 TestAST1::create(ASTContext *ctx, int value1, int value2) {
-  return Base::create(ctx, value1, value2);
+TestAST1 TestAST1::create(llvm::SMRange range, ASTContext *ctx, int value1,
+                          int value2) {
+  return Base::create(range, ctx, value1, value2);
 }
 
 void TestAST1::print(TestAST1 ast, ASTPrinter &printer) {
@@ -27,9 +28,9 @@ void TestAST1::print(TestAST1 ast, ASTPrinter &printer) {
                << ")";
 }
 
-TestIf TestIf::create(ASTContext *ctx, AST condition, AST thenBranch,
-                      AST elseBranch) {
-  return Base::create(ctx, condition, thenBranch, elseBranch);
+TestIf TestIf::create(llvm::SMRange range, ASTContext *ctx, AST condition,
+                      AST thenBranch, AST elseBranch) {
+  return Base::create(range, ctx, condition, thenBranch, elseBranch);
 }
 
 void TestIf::print(TestIf ast, ASTPrinter &printer) {

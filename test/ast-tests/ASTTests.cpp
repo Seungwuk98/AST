@@ -12,7 +12,7 @@ TEST_CASE("AST Creation Test" * doctest::test_suite("ast test suite")) {
   ctx.GetOrRegisterASTSet<TestASTSet>();
 
   SUBCASE("TestAST1 test") {
-    auto testAST1 = TestAST1::create(&ctx, 1, 2);
+    auto testAST1 = TestAST1::create({}, &ctx, 1, 2);
     CHECK_EQ(testAST1.getValue1(), 1);
     CHECK_EQ(testAST1.getValue2(), 2);
 
@@ -20,10 +20,10 @@ TEST_CASE("AST Creation Test" * doctest::test_suite("ast test suite")) {
   }
 
   SUBCASE("TestIf test") {
-    auto testAST1 = TestAST1::create(&ctx, 1, 2);
-    auto testAST2 = TestAST1::create(&ctx, 3, 4);
-    auto testAST3 = TestAST1::create(&ctx, 5, 6);
-    auto testIf = TestIf::create(&ctx, testAST1, testAST2, testAST3);
+    auto testAST1 = TestAST1::create({}, &ctx, 1, 2);
+    auto testAST2 = TestAST1::create({}, &ctx, 3, 4);
+    auto testAST3 = TestAST1::create({}, &ctx, 5, 6);
+    auto testIf = TestIf::create({}, &ctx, testAST1, testAST2, testAST3);
 
     CHECK_EQ(testIf.toString(), R"(TestIf(TestAST1(1, 2)) {
   TestAST1(3, 4)
@@ -38,10 +38,10 @@ TEST_CASE("AST Walk Test" * doctest::test_suite("ast test suite")) {
   ctx.GetOrRegisterASTSet<TestASTSet>();
 
   SUBCASE("Simple walk test") {
-    auto testAST1 = TestAST1::create(&ctx, 1, 2);
-    auto testAST2 = TestAST1::create(&ctx, 3, 4);
-    auto testAST3 = TestAST1::create(&ctx, 5, 6);
-    auto testIf = TestIf::create(&ctx, testAST1, testAST2, testAST3);
+    auto testAST1 = TestAST1::create({}, &ctx, 1, 2);
+    auto testAST2 = TestAST1::create({}, &ctx, 3, 4);
+    auto testAST3 = TestAST1::create({}, &ctx, 5, 6);
+    auto testIf = TestIf::create({}, &ctx, testAST1, testAST2, testAST3);
 
     llvm::SmallVector<AST> asts;
     auto walkResult = testIf.walk([&asts](AST ast) {
@@ -63,21 +63,21 @@ TEST_CASE("AST Equality Test" * doctest::test_suite("ast test suite")) {
   ctx.GetOrRegisterASTSet<TestASTSet>();
 
   SUBCASE("TestAST1 equality test") {
-    auto testAST1 = TestAST1::create(&ctx, 1, 2);
-    auto testAST2 = TestAST1::create(&ctx, 1, 2);
-    auto testAST3 = TestAST1::create(&ctx, 3, 4);
+    auto testAST1 = TestAST1::create({}, &ctx, 1, 2);
+    auto testAST2 = TestAST1::create({}, &ctx, 1, 2);
+    auto testAST3 = TestAST1::create({}, &ctx, 3, 4);
 
     CHECK(testAST1.isEqual(testAST2));
     CHECK_FALSE(testAST1.isEqual(testAST3));
   }
 
   SUBCASE("TestIf equality test") {
-    auto testAST1 = TestAST1::create(&ctx, 1, 2);
-    auto testAST2 = TestAST1::create(&ctx, 3, 4);
-    auto testAST3 = TestAST1::create(&ctx, 5, 6);
-    auto testIf1 = TestIf::create(&ctx, testAST1, testAST2, testAST3);
-    auto testIf2 = TestIf::create(&ctx, testAST1, testAST2, testAST3);
-    auto testIf3 = TestIf::create(&ctx, testAST1, testAST3, testAST2);
+    auto testAST1 = TestAST1::create({}, &ctx, 1, 2);
+    auto testAST2 = TestAST1::create({}, &ctx, 3, 4);
+    auto testAST3 = TestAST1::create({}, &ctx, 5, 6);
+    auto testIf1 = TestIf::create({}, &ctx, testAST1, testAST2, testAST3);
+    auto testIf2 = TestIf::create({}, &ctx, testAST1, testAST2, testAST3);
+    auto testIf3 = TestIf::create({}, &ctx, testAST1, testAST3, testAST2);
 
     CHECK(testIf1.isEqual(testIf2));
     CHECK_FALSE(testIf1.isEqual(testIf3));
@@ -89,11 +89,11 @@ TEST_CASE("TableGen AST" * doctest::test_suite("ast test suite")) {
   ctx.GetOrRegisterASTSet<TestASTSet>();
 
   SUBCASE("TestFor") {
-    auto one = Integer::create(&ctx, 1);
-    auto two = Integer::create(&ctx, 2);
-    auto three = Integer::create(&ctx, 3);
-    auto four = Integer::create(&ctx, 4);
-    auto testFor = TestFor::create(&ctx, "iter", one, two, three, four);
+    auto one = Integer::create({}, &ctx, 1);
+    auto two = Integer::create({}, &ctx, 2);
+    auto three = Integer::create({}, &ctx, 3);
+    auto four = Integer::create({}, &ctx, 4);
+    auto testFor = TestFor::create({}, &ctx, "iter", one, two, three, four);
     testFor.setHasBraceTag(true);
 
     CHECK_EQ(testFor.toString(), R"(for (iter from 1 to 2 step 3) {

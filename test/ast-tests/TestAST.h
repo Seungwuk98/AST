@@ -40,7 +40,8 @@ class TestAST1 : public AST::Base<TestAST1, AST, TestAST1Impl> {
 public:
   using Base::Base;
 
-  static TestAST1 create(ASTContext *ctx, int value1, int value2);
+  static TestAST1 create(llvm::SMRange loc, ASTContext *ctx, int value1,
+                         int value2);
 
   int getValue1() const { return getImpl()->getValue1(); }
   int getValue2() const { return getImpl()->getValue2(); }
@@ -80,8 +81,8 @@ class TestIf : public AST::Base<TestIf, AST, TestIfImpl> {
 public:
   using Base::Base;
 
-  static TestIf create(ASTContext *ctx, AST condition, AST thenBranch,
-                       AST elseBranch);
+  static TestIf create(llvm::SMRange loc, ASTContext *ctx, AST condition,
+                       AST thenBranch, AST elseBranch);
 
   AST getCondition() const { return getImpl()->getCondition(); }
   AST getThenBranch() const { return getImpl()->getThenBranch(); }
