@@ -62,14 +62,14 @@ protected:
 
   template <typename VisitAST, typename... Others>
   void visitImplHelp(AST ast, ConcreteType &visitor) {
-    if (auto visitAST = ast.dyn_cast<VisitAST>())
+    if (auto visitAST = ast.dyn_cast<VisitAST>()) {
       visitor.visit(visitAST);
-    else {
-      if constexpr (sizeof...(Others) > 0)
-        visitImplHelp<Others...>(ast, visitor);
-      else
-        llvm_unreachable("No visit method for the given AST");
+      return;
     }
+    if constexpr (sizeof...(Others) > 0)
+      visitImplHelp<Others...>(ast, visitor);
+    else
+      llvm_unreachable("No visit method for the given AST");
   }
 };
 
