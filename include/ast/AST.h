@@ -10,6 +10,7 @@
 
 namespace ast {
 class ASTBuilder;
+class Visitor;
 
 class ASTImpl {
 public:
@@ -67,6 +68,7 @@ public:
   void print(llvm::raw_ostream &os) const;
   void print(ASTPrinter &printer) const;
   void dump() const;
+  void accept(Visitor &visitor) const;
 
   template <typename Fn, WalkOrder Order = WalkOrder::PostOrder>
   WalkResult walk(Fn &&fn) const {

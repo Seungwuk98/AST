@@ -1,3 +1,6 @@
+#include "TestASTVisitor.h"
+#include "ast/ASTContext.h"
+#include <llvm-18/llvm/Support/raw_ostream.h>
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "TestAST.h"
 #include "TestAST2.h"
@@ -99,6 +102,31 @@ TEST_CASE("TableGen AST" * doctest::test_suite("ast test suite")) {
     CHECK_EQ(testFor.toString(), R"(for (iter from 1 to 2 step 3) {
   4
 })");
+  }
+}
+
+TEST_CASE("AST Visotor Test" * doctest::test_suite("ast test suite")) {
+  ASTContext ctx;
+  ctx.GetOrRegisterASTSet<TestASTSet>();
+
+  SUBCASE("TestAST1 visitor test") {
+    auto one = Integer::create({}, &ctx, 1);
+    auto two = Integer::create({}, &ctx, 2);
+    auto three = Integer::create({}, &ctx, 3);
+    auto four = Integer::create({}, &ctx, 4);
+    auto testFor = TestFor::create({}, &ctx, "iter", one, two, three, four);
+
+    std::string result;
+    llvm::raw_string_ostream ss(result);
+    TestASTVisitor visitor(ss);
+    testFor.accept(visitor);
+
+    CHECK_EQ(result, R"(visit TestFor
+visit Integer : 1
+visit Integer : 2
+visit Integer : 3
+visit Integer : 4
+)");
   }
 }
 

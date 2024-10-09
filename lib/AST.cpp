@@ -1,6 +1,9 @@
 #include "ast/AST.h"
+#include "ast/ASTVisitor.h"
 
 namespace ast {
+
+void AST::accept(Visitor &visitor) const { visitor.visit(*this); }
 
 std::string AST::toString() const {
   std::string str;
