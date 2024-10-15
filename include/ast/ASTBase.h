@@ -2,6 +2,7 @@
 #define AST_BASE_H
 
 #include "ast/ASTBuilder.h"
+#include "ast/ASTConcept.h"
 #include "ast/ASTContext.h"
 #include "ast/ASTDataHandler.h"
 #include "ast/ASTPrinter.h"
@@ -37,11 +38,13 @@ public:
 
   static const auto getChildrenWalkFn() {
     return [](BaseType ast, std::function<void(AST)> fn) {
-      auto concreteAST = ast.template cast<ConcreteType>();
-      const auto &traversalData = concreteAST.traversalOrder();
-      detail::ASTDataHandler<
-          std::remove_cvref_t<decltype(traversalData)>>::walk(traversalData,
-                                                              fn);
+      if constexpr (HasTraversalOrder<ConcreteType>) {
+        auto concreteAST = ast.template cast<ConcreteType>();
+        const auto &traversalData = concreteAST.traversalOrder();
+        detail::ASTDataHandler<
+            std::remove_cvref_t<decltype(traversalData)>>::walk(traversalData,
+                                                                fn);
+      }
     };
   }
 
@@ -49,13 +52,18 @@ public:
     return [](BaseType left, BaseType right) {
       if (left.getID() != right.getID())
         return false;
-      auto leftConcrete = left.template cast<ConcreteType>();
-      auto leftMember = leftConcrete.traversalOrder();
-      auto rightConcrete = right.template cast<ConcreteType>();
-      auto rightMember = rightConcrete.traversalOrder();
-      return detail::ASTDataHandler<
-          std::remove_cvref_t<decltype(leftMember)>>::isEqual(leftMember,
-                                                              rightMember);
+      assert(left.getID() == ID::get<ConcreteType>() &&
+             "Expected both ASTs to be the concrete type of AST");
+      if constexpr (HasTraversalOrder<ConcreteType>) {
+        auto leftConcrete = left.template cast<ConcreteType>();
+        auto leftMember = leftConcrete.traversalOrder();
+        auto rightConcrete = right.template cast<ConcreteType>();
+        auto rightMember = rightConcrete.traversalOrder();
+        return detail::ASTDataHandler<
+            std::remove_cvref_t<decltype(leftMember)>>::isEqual(leftMember,
+                                                                rightMember);
+      }
+      return true;
     };
   }
 

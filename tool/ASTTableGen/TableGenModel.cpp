@@ -154,71 +154,84 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
   //==---------------------------------------------------------------------==//
 
   /// tree member declaration as std::tuple
+  auto hasTreeMember = !model.TreeMemberParamNames.empty();
+  cxx::Class::Field *treeMemberDecl = nullptr;
+  llvm::SmallVector<cxx::Class::Method *> treeMemberGetters;
   llvm::SmallVector<const cxx::Type *> treeMemberElementTypes;
   llvm::SmallVector<const cxx::Type *> treeMemberViewTypes;
-  treeMemberElementTypes.reserve(model.TreeMemberTypePairs.size());
-  treeMemberViewTypes.reserve(model.TreeMemberTypePairs.size());
 
-  for (const auto &[paramType, viewType] : model.TreeMemberTypePairs) {
-    treeMemberElementTypes.emplace_back(paramType);
-    treeMemberViewTypes.emplace_back(viewType);
-  }
+  if (hasTreeMember) {
+    treeMemberElementTypes.reserve(model.TreeMemberTypePairs.size());
+    treeMemberViewTypes.reserve(model.TreeMemberTypePairs.size());
 
-  cxx::Type *treeMemberType =
-      createTupleType(emitter->getContext(), treeMemberElementTypes);
+    for (const auto &[paramType, viewType] : model.TreeMemberTypePairs) {
+      treeMemberElementTypes.emplace_back(paramType);
+      treeMemberViewTypes.emplace_back(viewType);
+    }
 
-  cxx::Class::Field *treeMemberDecl = cxx::Class::Field::create(
-      emitter->getContext(), false, {"astTreeMember", treeMemberType});
+    cxx::Type *treeMemberType =
+        createTupleType(emitter->getContext(), treeMemberElementTypes);
 
-  /// tree member getter
-  llvm::SmallVector<cxx::Class::Method *> treeMemberGetters;
-  treeMemberGetters.reserve(model.TreeMemberTypePairs.size());
+    treeMemberDecl = cxx::Class::Field::create(
+        emitter->getContext(), false, {"astTreeMember", treeMemberType});
 
-  for (const auto &[idx, paramName, paramType] :
-       llvm::enumerate(model.TreeMemberParamNames, treeMemberViewTypes)) {
-    auto *getter = createTreeMemberGetterMethod(emitter->getContext(), idx,
-                                                paramName, paramType);
-    treeMemberGetters.emplace_back(getter);
+    /// tree member getter
+    treeMemberGetters.reserve(model.TreeMemberTypePairs.size());
+
+    for (const auto &[idx, paramName, paramType] :
+         llvm::enumerate(model.TreeMemberParamNames, treeMemberViewTypes)) {
+      auto *getter = createTreeMemberGetterMethod(emitter->getContext(), idx,
+                                                  paramName, paramType);
+      treeMemberGetters.emplace_back(getter);
+    }
   }
 
   /// tag declaration
-
-  llvm::SmallVector<const cxx::Type *> tagElementTypes;
-  llvm::SmallVector<const cxx::Type *> tagViewTypes;
-  tagElementTypes.reserve(model.TagTypePairs.size());
-  tagViewTypes.reserve(model.TagTypePairs.size());
-
-  for (const auto &[paramType, viewType] : model.TagTypePairs) {
-    tagElementTypes.emplace_back(paramType);
-    tagViewTypes.emplace_back(viewType);
-  }
-
-  cxx::Type *tagType = createTupleType(emitter->getContext(), tagElementTypes);
-  cxx::Class::Field *tagDecl = cxx::Class::Field::create(
-      emitter->getContext(), false, {"astTag", tagType});
-
-  /// tag getter & setter
+  auto hasTag = !model.TagParamNames.empty();
+  cxx::Class::Field *tagDecl = nullptr;
   llvm::SmallVector<cxx::Class::Method *> tagGetters;
   llvm::SmallVector<cxx::Class::Method *> tagSetters;
-  tagGetters.reserve(model.TagTypePairs.size());
-  tagSetters.reserve(model.TagTypePairs.size());
+  llvm::SmallVector<const cxx::Type *> tagElementTypes;
+  llvm::SmallVector<const cxx::Type *> tagViewTypes;
 
-  for (const auto &[idx, paramName, paramType, viewType] :
-       llvm::enumerate(model.TagParamNames, tagElementTypes, tagViewTypes)) {
-    auto *getter = createTagMemberGetterMethod(emitter->getContext(), idx,
-                                               paramName, paramType);
-    auto *setter = createTagMemberSetterMethod(emitter, idx, paramName,
-                                               paramType, viewType);
-    tagGetters.emplace_back(getter);
-    tagSetters.emplace_back(setter);
+  if (hasTag) {
+    tagElementTypes.reserve(model.TagTypePairs.size());
+    tagViewTypes.reserve(model.TagTypePairs.size());
+
+    for (const auto &[paramType, viewType] : model.TagTypePairs) {
+      tagElementTypes.emplace_back(paramType);
+      tagViewTypes.emplace_back(viewType);
+    }
+
+    cxx::Type *tagType =
+        createTupleType(emitter->getContext(), tagElementTypes);
+    tagDecl = cxx::Class::Field::create(emitter->getContext(), false,
+                                        {"astTag", tagType});
+
+    /// tag getter & setter
+    tagGetters.reserve(model.TagTypePairs.size());
+    tagSetters.reserve(model.TagTypePairs.size());
+
+    for (const auto &[idx, paramName, paramType, viewType] :
+         llvm::enumerate(model.TagParamNames, tagElementTypes, tagViewTypes)) {
+      auto *getter = createTagMemberGetterMethod(emitter->getContext(), idx,
+                                                 paramName, paramType);
+      auto *setter = createTagMemberSetterMethod(emitter, idx, paramName,
+                                                 paramType, viewType);
+      tagGetters.emplace_back(getter);
+      tagSetters.emplace_back(setter);
+    }
   }
 
   /// traversal order
-  cxx::Class::Method *traversalOrderMethod = cxx::Class::Method::create(
-      emitter->getContext(), emitter->getConstAutoRefType(), "traversalOrder",
-      std::nullopt,
-      cxx::Class::Method::InstanceAttribute{.IsConst = true,
-                                            .Body = {"return astTreeMember;"}});
+  cxx::Class::Method *traversalOrderMethod = nullptr;
+  if (hasTreeMember) {
+    traversalOrderMethod = cxx::Class::Method::create(
+        emitter->getContext(), emitter->getConstAutoRefType(), "traversalOrder",
+        std::nullopt,
+        cxx::Class::Method::InstanceAttribute{
+            .IsConst = true, .Body = {"return astTreeMember;"}});
+  }
 
   /// friend class
   cxx::Class::Friend *friendASTContext = cxx::Class::Friend::create(
@@ -255,19 +268,24 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
   privateMembers.emplace_back(friendAST);
   privateMembers.emplace_back(constructor);
   privateMembers.emplace_back(createMethod);
-  privateMembers.emplace_back(treeMemberDecl);
-  privateMembers.emplace_back(tagDecl);
+  if (hasTreeMember)
+    privateMembers.emplace_back(treeMemberDecl);
+  if (hasTag)
+    privateMembers.emplace_back(tagDecl);
 
   cxx::Class::Block privateBlock{.Access = cxx::Class::AccessModifier::Private,
                                  .Members = privateMembers};
 
   /// public block
   llvm::SmallVector<cxx::Class::ClassMember> publicMembers;
-  publicMembers.emplace_back(traversalOrderMethod);
-  publicMembers.append(treeMemberGetters.begin(), treeMemberGetters.end());
-  publicMembers.append(tagGetters.begin(), tagGetters.end());
-  publicMembers.append(tagSetters.begin(), tagSetters.end());
-
+  if (hasTreeMember) {
+    publicMembers.emplace_back(traversalOrderMethod);
+    publicMembers.append(treeMemberGetters.begin(), treeMemberGetters.end());
+  }
+  if (hasTag) {
+    publicMembers.append(tagGetters.begin(), tagGetters.end());
+    publicMembers.append(tagSetters.begin(), tagSetters.end());
+  }
   cxx::Class::Block publicBlock{.Access = cxx::Class::AccessModifier::Public,
                                 .Members = publicMembers};
 
@@ -302,58 +320,67 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
 
   /// tree getter
   llvm::SmallVector<cxx::Class::Method *> astTreeMemberGetters;
-  astTreeMemberGetters.reserve(model.TreeMemberParamNames.size());
+  if (hasTreeMember) {
+    astTreeMemberGetters.reserve(model.TreeMemberParamNames.size());
 
-  for (const auto &[idx, paramName, viewType] :
-       llvm::enumerate(model.TreeMemberParamNames, treeMemberViewTypes)) {
-    auto getterName = getGetterName(paramName);
-    auto getterBody =
-        llvm::formatv("return getImpl()->get{0}{1}();",
-                      llvm::toUpper(paramName[0]), paramName.drop_front());
-    cxx::Class::Method::InstanceAttribute getterAttr{
-        .IsConst = true, .Body = {getterBody.str()}};
-    cxx::Class::Method *getter = cxx::Class::Method::create(
-        emitter->getContext(), viewType, getterName, std::nullopt, getterAttr);
-    astTreeMemberGetters.emplace_back(getter);
+    for (const auto &[idx, paramName, viewType] :
+         llvm::enumerate(model.TreeMemberParamNames, treeMemberViewTypes)) {
+      auto getterName = getGetterName(paramName);
+      auto getterBody =
+          llvm::formatv("return getImpl()->get{0}{1}();",
+                        llvm::toUpper(paramName[0]), paramName.drop_front());
+      cxx::Class::Method::InstanceAttribute getterAttr{
+          .IsConst = true, .Body = {getterBody.str()}};
+      cxx::Class::Method *getter =
+          cxx::Class::Method::create(emitter->getContext(), viewType,
+                                     getterName, std::nullopt, getterAttr);
+      astTreeMemberGetters.emplace_back(getter);
+    }
   }
-
   /// tag getter & setter
   llvm::SmallVector<cxx::Class::Method *> astTagGetters;
   llvm::SmallVector<cxx::Class::Method *> astTagSetters;
-  astTagGetters.reserve(model.TreeMemberTypePairs.size());
-  astTagSetters.reserve(model.TreeMemberTypePairs.size());
 
-  for (const auto &[idx, paramName, paramType, viewType] :
-       llvm::enumerate(model.TagParamNames, tagElementTypes, tagViewTypes)) {
-    auto getterName = getGetterName(paramName) + "Tag";
-    auto setterName = getSetterName(paramName) + "Tag";
+  if (hasTag) {
+    astTagGetters.reserve(model.TreeMemberTypePairs.size());
+    astTagSetters.reserve(model.TreeMemberTypePairs.size());
 
-    auto getterBody =
-        llvm::formatv("return getImpl()->get{0}{1}Tag();",
-                      llvm::toUpper(paramName[0]), paramName.drop_front());
-    cxx::Class::Method::InstanceAttribute getterAttr{
-        .IsConst = true, .Body = {getterBody.str()}};
-    cxx::Class::Method *getter = cxx::Class::Method::create(
-        emitter->getContext(), viewType, getterName, std::nullopt, getterAttr);
+    for (const auto &[idx, paramName, paramType, viewType] :
+         llvm::enumerate(model.TagParamNames, tagElementTypes, tagViewTypes)) {
+      auto getterName = getGetterName(paramName) + "Tag";
+      auto setterName = getSetterName(paramName) + "Tag";
 
-    auto setterBody = llvm::formatv("getImpl()->set{0}{1}Tag({2});",
-                                    llvm::toUpper(paramName[0]),
-                                    paramName.drop_front(), paramName);
-    cxx::Class::Method::InstanceAttribute setterAttr{
-        .IsConst = false, .Body = {setterBody.str()}};
-    cxx::Class::Method *setter = cxx::Class::Method::create(
-        emitter->getContext(), emitter->getVoidType(), setterName,
-        {{paramName.str(), viewType}}, setterAttr);
-    astTagGetters.emplace_back(getter);
-    astTagSetters.emplace_back(setter);
+      auto getterBody =
+          llvm::formatv("return getImpl()->get{0}{1}Tag();",
+                        llvm::toUpper(paramName[0]), paramName.drop_front());
+      cxx::Class::Method::InstanceAttribute getterAttr{
+          .IsConst = true, .Body = {getterBody.str()}};
+      cxx::Class::Method *getter =
+          cxx::Class::Method::create(emitter->getContext(), viewType,
+                                     getterName, std::nullopt, getterAttr);
+
+      auto setterBody = llvm::formatv("getImpl()->set{0}{1}Tag({2});",
+                                      llvm::toUpper(paramName[0]),
+                                      paramName.drop_front(), paramName);
+      cxx::Class::Method::InstanceAttribute setterAttr{
+          .IsConst = false, .Body = {setterBody.str()}};
+      cxx::Class::Method *setter = cxx::Class::Method::create(
+          emitter->getContext(), emitter->getVoidType(), setterName,
+          {{paramName.str(), viewType}}, setterAttr);
+      astTagGetters.emplace_back(getter);
+      astTagSetters.emplace_back(setter);
+    }
   }
 
-  /// traversal order
-  cxx::Class::Method *astTraversalOrderMethod = cxx::Class::Method::create(
-      emitter->getContext(), emitter->getConstAutoRefType(), "traversalOrder",
-      {},
-      cxx::Class::Method::InstanceAttribute{
-          .IsConst = true, .Body = {"return getImpl()->traversalOrder();"}});
+  cxx::Class::Method *astTraversalOrderMethod = nullptr;
+  if (hasTreeMember) {
+    /// traversal order
+    astTraversalOrderMethod = cxx::Class::Method::create(
+        emitter->getContext(), emitter->getConstAutoRefType(), "traversalOrder",
+        {},
+        cxx::Class::Method::InstanceAttribute{
+            .IsConst = true, .Body = {"return getImpl()->traversalOrder();"}});
+  }
 
   /// print method
   cxx::Class::Method *astPrintMethod = cxx::Class::Method::create(
@@ -374,11 +401,17 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
   llvm::SmallVector<cxx::Class::ClassMember> astPublicMembers;
 
   astPublicMembers.emplace_back(usingBase);
-  astPublicMembers.append(astTreeMemberGetters.begin(),
-                          astTreeMemberGetters.end());
-  astPublicMembers.append(astTagGetters.begin(), astTagGetters.end());
-  astPublicMembers.append(astTagSetters.begin(), astTagSetters.end());
-  astPublicMembers.emplace_back(astTraversalOrderMethod);
+  if (hasTreeMember) {
+    astPublicMembers.append(astTreeMemberGetters.begin(),
+                            astTreeMemberGetters.end());
+  }
+  if (hasTag) {
+    astPublicMembers.append(astTagGetters.begin(), astTagGetters.end());
+    astPublicMembers.append(astTagSetters.begin(), astTagSetters.end());
+  }
+  if (hasTreeMember)
+    astPublicMembers.emplace_back(astTraversalOrderMethod);
+
   astPublicMembers.emplace_back(astPrintMethod);
   astPublicMembers.emplace_back(astCreateFunc);
 

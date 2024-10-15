@@ -70,7 +70,7 @@ public:
   void dump() const;
   void accept(Visitor &visitor) const;
 
-  template <typename Fn, WalkOrder Order = WalkOrder::PostOrder>
+  template <WalkOrder Order = WalkOrder::PostOrder, typename Fn>
   WalkResult walk(Fn &&fn) const {
     ASTWalker walker(Order);
     walker.addFn(std::forward<Fn>(fn));
