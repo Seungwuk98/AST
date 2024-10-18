@@ -215,7 +215,7 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
     for (const auto &[idx, paramName, paramType, viewType] :
          llvm::enumerate(model.TagParamNames, tagElementTypes, tagViewTypes)) {
       auto *getter = createTagMemberGetterMethod(emitter->getContext(), idx,
-                                                 paramName, paramType);
+                                                 paramName, viewType);
       auto *setter = createTagMemberSetterMethod(emitter, idx, paramName,
                                                  paramType, viewType);
       tagGetters.emplace_back(getter);

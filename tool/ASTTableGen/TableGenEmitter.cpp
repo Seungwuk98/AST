@@ -56,6 +56,11 @@ bool ASTDeclGenMain(llvm::raw_ostream &OS, llvm::RecordKeeper &Records) {
           printer, astDeclModel->getNamespaceName());
       astDeclModel->getForwardClassDecl()->print(printer);
       astDeclModel->getForwardClassImplDecl()->print(printer.PrintLine());
+    }
+
+    for (const auto &astDeclModel : astDeclModels) {
+      cxx::ComponentPrinter::NamespaceScope namespaceScope(
+          printer, astDeclModel->getNamespaceName());
       astDeclModel->getClassImplDecl()->print(printer.PrintLine());
       astDeclModel->getClassDecl()->print(printer.PrintLine());
     }
@@ -253,6 +258,25 @@ TableGenEmitter::getTypePairByDefInit(const llvm::DefInit *defInit) {
 
     llvm::SmallVector<const cxx::Type *> typeArgs{firstTypePair.first,
                                                   secondTypePair.first};
+    const cxx::Type *paramType =
+        cxx::RawType::create(context, paramTypeStr, typeArgs);
+    assert(!viewTypeStrOpt);
+    const cxx::Type *viewType =
+        cxx::createConstReferenceType(context, paramType);
+    return {std::make_pair(paramType, viewType), true};
+  }
+
+  if (record->isSubClassOf("Map")) {
+    llvm::Init *keyTypeInit = record->getValueInit("keyType");
+    llvm::Init *valueTypeInit = record->getValueInit("valueType");
+    const auto &[keyTypePair, keySuccess] = getTypePair(keyTypeInit);
+    if (!keySuccess)
+      return {std::make_pair(nullptr, nullptr), false};
+    const auto &[valueTypePair, valueSuccess] = getTypePair(valueTypeInit);
+    if (!valueSuccess)
+      return {std::make_pair(nullptr, nullptr), false};
+    llvm::SmallVector<const cxx::Type *> typeArgs{keyTypePair.first,
+                                                  valueTypePair.first};
     const cxx::Type *paramType =
         cxx::RawType::create(context, paramTypeStr, typeArgs);
     assert(!viewTypeStrOpt);

@@ -64,6 +64,12 @@ class Variant<list<DataFormat> element> : DataFormat {
   list<DataFormat> elementTypes = element;
 }
 
+class Map<DataFormat key, DataFormat value> : DataFormat {
+  let paramType = "::llvm::DenseMap";
+  DataFormat keyType = key;
+  DataFormat valueType = value;
+}
+
 class
     UserDefineType<string paramType_, string viewType_ = paramType_, bit cr = 0>
     : DataFormat {
