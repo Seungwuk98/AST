@@ -1,9 +1,9 @@
-#include "TestASTVisitor.h"
-#include "ast/ASTContext.h"
-#include <llvm-18/llvm/Support/raw_ostream.h>
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "TestAST.h"
 #include "TestAST2.h"
+#include "TestASTVisitor.h"
+#include "ast/ASTContext.h"
+#include "llvm/Support/raw_ostream.h"
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest/doctest.h"
 
 TEST_SUITE("ast test suite") {}

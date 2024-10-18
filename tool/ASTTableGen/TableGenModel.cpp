@@ -5,7 +5,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
-#include <llvm-18/llvm/Support/raw_ostream.h>
+#include "llvm/Support/raw_ostream.h"
 #include <numeric>
 
 namespace ast::tblgen {
