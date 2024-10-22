@@ -517,10 +517,33 @@ std::unique_ptr<ASTDefModel> ASTDefModel::create(const DataModel &model) {
   llvm::StringRef astMnemonic =
       model.ASTMnemonic ? *model.ASTMnemonic : model.ASTName;
 
+  /// ast name
   auto *nameInit = cxx::VarInit::create(
       emitter->getContext(), emitter->getllvmStringRefType(),
       {model.ASTName.str()}, "Name",
       llvm::formatv(R"("{0}")", astMnemonic).str());
+
+  llvm::SmallVector<std::string> astAccess{model.ASTName.str()};
+  std::pair<llvm::SmallVector<std::string>, bool> accessVectAndConst{astAccess,
+                                                                     true};
+  std::pair<llvm::SmallVector<std::string>, bool> accessVectAndNonConst{
+      astAccess, false};
+
+  /// traversal order
+  std::optional<cxx::Function *> astTraversalOrderDef;
+  if (hasTreeMember) {
+    auto *treeMemberTupleType =
+        createTupleType(emitter->getContext(), treeMemberElementTypes);
+    auto *treeMemberConstRefType = cxx::createConstReferenceType(
+        emitter->getContext(), treeMemberTupleType);
+
+    auto traversalOrderBody =
+        llvm::formatv("return getImpl()->traversalOrder();");
+    astTraversalOrderDef = cxx::Function::create(
+        emitter->getContext(), std::nullopt, cxx::Function::Access::None,
+        treeMemberConstRefType, accessVectAndConst, "traversalOrder",
+        std::nullopt, cxx::BodyCode{traversalOrderBody.str()});
+  }
 
   llvm::SmallVector<cxx::DeclPair> param;
   param.reserve(model.TreeMemberParamNames.size());
@@ -528,12 +551,6 @@ std::unique_ptr<ASTDefModel> ASTDefModel::create(const DataModel &model) {
        llvm::zip(model.TreeMemberParamNames, treeMemberViewTypes)) {
     param.emplace_back(paramName, viewType);
   }
-
-  llvm::SmallVector<std::string> astAccess{model.ASTName.str()};
-  std::pair<llvm::SmallVector<std::string>, bool> accessVectAndConst{astAccess,
-                                                                     true};
-  std::pair<llvm::SmallVector<std::string>, bool> accessVectAndNonConst{
-      astAccess, false};
 
   /// ast tree member getters
   llvm::SmallVector<cxx::Function *> astTreeMemberGetters;
@@ -640,8 +657,8 @@ std::unique_ptr<ASTDefModel> ASTDefModel::create(const DataModel &model) {
   return std::unique_ptr<ASTDefModel>(new ASTDefModel(
       model.ASTName, astImplName, model.Namespace, model.Description,
       model.ExtraClassDefinition, astImplClass, nameInit, astTreeMemberGetters,
-      astTagGetters, astTagSetters, astImplCreateFunc, astImplConstructor,
-      astCreateFunc));
+      astTagGetters, astTagSetters, astTraversalOrderDef, astImplCreateFunc,
+      astImplConstructor, astCreateFunc));
 }
 
 } // namespace ast::tblgen

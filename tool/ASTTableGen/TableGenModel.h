@@ -78,6 +78,9 @@ public:
   }
   llvm::ArrayRef<cxx::Function *> getTagGetters() const { return tagGetters; }
   llvm::ArrayRef<cxx::Function *> getTagSetters() const { return tagSetters; }
+  std::optional<cxx::Function *> getTraversalOrderFunction() const {
+    return traversalOrderFunction;
+  }
   cxx::Function *getASTImplCreateFunction() const {
     return astImplCreateFunction;
   }
@@ -98,6 +101,7 @@ private:
               llvm::ArrayRef<cxx::Function *> treeMemberGetters,
               llvm::ArrayRef<cxx::Function *> tagGetters,
               llvm::ArrayRef<cxx::Function *> tagSetters,
+              std::optional<cxx::Function *> traversalOrderFunction,
               cxx::Function *astImplCreateFunction,
               cxx::ClassConstructor *astImplConstructor,
               cxx::Function *astCreateFunction)
@@ -106,7 +110,8 @@ private:
         extraClassDefinition(extraClassDefinition),
         classImplDecl(classImplDecl), classNameInit(classNameInit),
         treeMemberGetters(treeMemberGetters), tagGetters(tagGetters),
-        tagSetters(tagSetters), astImplCreateFunction(astImplCreateFunction),
+        tagSetters(tagSetters), traversalOrderFunction(traversalOrderFunction),
+        astImplCreateFunction(astImplCreateFunction),
         astImplConstructor(astImplConstructor),
         astCreateFunction(astCreateFunction) {}
 

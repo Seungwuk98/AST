@@ -2,6 +2,7 @@
 #define TEST_AST2_H
 
 #include "ast/AST.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/YAMLTraits.h"
 
 #define AST_TABLEGEN_DECL

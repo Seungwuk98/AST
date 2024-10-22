@@ -118,6 +118,10 @@ bool ASTDefGenMain(llvm::raw_ostream &OS, llvm::RecordKeeper &Records) {
       for (const auto &setter : defModel->getTagSetters())
         setter->print(printer.PrintLine());
 
+      if (defModel->getTraversalOrderFunction())
+        defModel->getTraversalOrderFunction().value()->print(
+            printer.PrintLine());
+
       defModel->getASTImplCreateFunction()->print(printer);
       defModel->getASTImplConstructor()->print(printer.PrintLine());
       defModel->getASTCreateFunction()->print(printer.PrintLine());
