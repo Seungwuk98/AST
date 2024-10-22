@@ -104,7 +104,7 @@ TEST_CASE("TableGen AST" * doctest::test_suite("ast test suite")) {
   }
 }
 
-TEST_CASE("AST Visotor Test" * doctest::test_suite("ast test suite")) {
+TEST_CASE("AST Visitor Test" * doctest::test_suite("ast test suite")) {
   ASTContext ctx;
   ctx.GetOrRegisterASTSet<TestASTSet>();
 
