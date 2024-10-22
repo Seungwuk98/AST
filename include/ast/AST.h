@@ -69,6 +69,9 @@ public:
   void print(ASTPrinter &printer) const;
   void dump() const;
   void accept(Visitor &visitor) const;
+  llvm::StringRef getASTName() const {
+    return getASTKindProperty().getNameFn()();
+  }
 
   template <WalkOrder Order = WalkOrder::PostOrder, typename Fn>
   WalkResult walk(Fn &&fn) const {

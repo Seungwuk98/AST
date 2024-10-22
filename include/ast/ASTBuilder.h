@@ -2,14 +2,17 @@
 #define AST_BUILDER_H
 
 #include "ast/ASTContext.h"
+#include "ast/ASTKindProperty.h"
 #include "llvm/Support/SMLoc.h"
 
 namespace ast {
 
 class ASTImpl;
 struct ASTBuilder {
+  using CtorFnRef = llvm::function_ref<void(void *, ASTKindProperty *)>;
+
   template <typename Class, typename... Args>
-  static Class create(llvm::SMRange range, ASTContext *ctx, Args &&...args) {
+  static Class create(ASTContext *ctx, CtorFnRef ctorFn, Args &&...args) {
     using ImplTy = typename Class::ImplTy;
 
     auto *kindProperty = ctx->GetASTKindProperty(ID::get<Class>());
@@ -20,10 +23,17 @@ struct ASTBuilder {
     } else {
       impl = ImplTy::create(ctx, std::forward<Args>(args)...);
     }
-    impl->setProperty(kindProperty);
-    impl->setLocation(range);
+    ctorFn(impl, kindProperty);
 
     return Class(impl);
+  }
+
+  template <typename ImplType> static auto createCtorFn(llvm::SMRange range) {
+    return [range](void *impl, ASTKindProperty *kindProperty) {
+      ImplType *implPtr = static_cast<ImplType *>(impl);
+      implPtr->setLocation(range);
+      implPtr->setProperty(kindProperty);
+    };
   }
 
   template <typename... Class> static void registerAST(ASTContext *ctx) {

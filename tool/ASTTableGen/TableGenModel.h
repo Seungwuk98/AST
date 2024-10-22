@@ -13,6 +13,7 @@ struct DataModel {
 
   llvm::StringRef SetName;
   llvm::StringRef ASTName;
+  std::optional<llvm::StringRef> ASTMnemonic;
   llvm::StringRef Namespace;
   llvm::StringRef Description;
   llvm::StringRef Parent;
@@ -36,9 +37,8 @@ public:
   llvm::StringRef getDescription() const { return description; }
 
   cxx::Class *getForwardClassDecl() const { return forwardClassDecl; }
-  cxx::Class *getForwardClassImplDecl() const { return forwadClassImplDecl; }
+  cxx::Class *getForwardClassImplDecl() const { return forwardClassImplDecl; }
   cxx::Class *getClassDecl() const { return classDecl; }
-  cxx::Class *getClassImplDecl() const { return classImplDecl; }
 
   static std::unique_ptr<ASTDeclModel> create(const DataModel &model);
 
@@ -46,21 +46,19 @@ private:
   ASTDeclModel(llvm::StringRef className, llvm::StringRef classImplName,
                llvm::StringRef namespaceName, llvm::StringRef description,
                cxx::Class *forwardClassDecl, cxx::Class *forwadClassImplDecl,
-               cxx::Class *classDecl, cxx::Class *classImplDecl)
+               cxx::Class *classDecl)
       : className(className), classImplName(classImplName),
         namespaceName(namespaceName), description(description),
         forwardClassDecl(forwardClassDecl),
-        forwadClassImplDecl(forwadClassImplDecl), classDecl(classDecl),
-        classImplDecl(classImplDecl) {}
+        forwardClassImplDecl(forwadClassImplDecl), classDecl(classDecl) {}
 
   std::string className;
   std::string classImplName;
   std::string namespaceName;
   std::string description;
   cxx::Class *forwardClassDecl;
-  cxx::Class *forwadClassImplDecl;
+  cxx::Class *forwardClassImplDecl;
   cxx::Class *classDecl;
-  cxx::Class *classImplDecl;
 };
 
 class ASTDefModel {
@@ -73,6 +71,13 @@ public:
     return extraClassDefinition;
   }
 
+  cxx::Class *getClassImplDecl() const { return classImplDecl; }
+  cxx::VarInit *getClassNameInit() const { return classNameInit; }
+  llvm::ArrayRef<cxx::Function *> getTreeMemberGetters() const {
+    return treeMemberGetters;
+  }
+  llvm::ArrayRef<cxx::Function *> getTagGetters() const { return tagGetters; }
+  llvm::ArrayRef<cxx::Function *> getTagSetters() const { return tagSetters; }
   cxx::Function *getASTImplCreateFunction() const {
     return astImplCreateFunction;
   }
@@ -88,14 +93,20 @@ public:
 private:
   ASTDefModel(llvm::StringRef className, llvm::StringRef classImplName,
               llvm::StringRef namespaceName, llvm::StringRef description,
-              llvm::StringRef extraClassDefinition,
+              llvm::StringRef extraClassDefinition, cxx::Class *classImplDecl,
+              cxx::VarInit *classNameInit,
+              llvm::ArrayRef<cxx::Function *> treeMemberGetters,
+              llvm::ArrayRef<cxx::Function *> tagGetters,
+              llvm::ArrayRef<cxx::Function *> tagSetters,
               cxx::Function *astImplCreateFunction,
               cxx::ClassConstructor *astImplConstructor,
               cxx::Function *astCreateFunction)
       : className(className), classImplName(classImplName),
         namespaceName(namespaceName), description(description),
         extraClassDefinition(extraClassDefinition),
-        astImplCreateFunction(astImplCreateFunction),
+        classImplDecl(classImplDecl), classNameInit(classNameInit),
+        treeMemberGetters(treeMemberGetters), tagGetters(tagGetters),
+        tagSetters(tagSetters), astImplCreateFunction(astImplCreateFunction),
         astImplConstructor(astImplConstructor),
         astCreateFunction(astCreateFunction) {}
 
@@ -104,6 +115,12 @@ private:
   std::string namespaceName;
   std::string description;
   std::string extraClassDefinition;
+  cxx::Class *classImplDecl;
+  cxx::VarInit *classNameInit;
+  llvm::SmallVector<cxx::Function *> treeMemberGetters;
+  llvm::SmallVector<cxx::Function *> tagGetters;
+  llvm::SmallVector<cxx::Function *> tagSetters;
+  std::optional<cxx::Function *> traversalOrderFunction;
   cxx::Function *astImplCreateFunction;
   cxx::ClassConstructor *astImplConstructor;
   cxx::Function *astCreateFunction;

@@ -8,6 +8,11 @@ concept HasTraversalOrder = requires(T obj) {
   { obj.traversalOrder() };
 };
 
+template <typename T>
+concept HasASTName = requires(T) {
+  { T::Name };
+};
+
 } // namespace ast
 
 #endif // AST_CONCEPT_H

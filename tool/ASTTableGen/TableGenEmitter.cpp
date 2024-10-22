@@ -61,7 +61,6 @@ bool ASTDeclGenMain(llvm::raw_ostream &OS, llvm::RecordKeeper &Records) {
     for (const auto &astDeclModel : astDeclModels) {
       cxx::ComponentPrinter::NamespaceScope namespaceScope(
           printer, astDeclModel->getNamespaceName());
-      astDeclModel->getClassImplDecl()->print(printer.PrintLine());
       astDeclModel->getClassDecl()->print(printer.PrintLine());
     }
 
@@ -108,6 +107,17 @@ bool ASTDefGenMain(llvm::raw_ostream &OS, llvm::RecordKeeper &Records) {
     for (const auto &defModel : astDefModels) {
       cxx::ComponentPrinter::NamespaceScope namespaceScope(
           printer, defModel->getNamespaceName());
+      defModel->getClassImplDecl()->print(printer);
+      defModel->getClassNameInit()->print(printer.PrintLine());
+      for (const auto &getter : defModel->getTreeMemberGetters())
+        getter->print(printer.PrintLine());
+
+      for (const auto &getter : defModel->getTagGetters())
+        getter->print(printer.PrintLine());
+
+      for (const auto &setter : defModel->getTagSetters())
+        setter->print(printer.PrintLine());
+
       defModel->getASTImplCreateFunction()->print(printer);
       defModel->getASTImplConstructor()->print(printer.PrintLine());
       defModel->getASTCreateFunction()->print(printer.PrintLine());
@@ -134,6 +144,7 @@ TableGenEmitter::TableGenEmitter(llvm::raw_ostream &os,
   astPrinterRef = cxx::ReferenceType::create(
       context, cxx::RawType::create(context, "::ast::ASTPrinter", {}));
   llvmSMRangeType = cxx::RawType::create(context, "::llvm::SMRange", {});
+  llvmStringRefType = cxx::RawType::create(context, "::llvm::StringRef", {});
 }
 TableGenEmitter::~TableGenEmitter() { delete context; }
 

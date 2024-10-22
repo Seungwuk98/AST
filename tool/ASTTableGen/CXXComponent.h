@@ -108,7 +108,7 @@ public:
   public:
     struct InstanceAttribute {
       bool IsConst;
-      BodyCode Body;
+      std::optional<BodyCode> Body;
     };
 
     struct VirtualAttribute {
@@ -117,6 +117,7 @@ public:
     };
 
     struct OverrideAttribute {
+      bool IsConst;
       std::optional<BodyCode> Body;
     };
 
@@ -124,9 +125,8 @@ public:
       std::optional<BodyCode> Body;
     };
 
-    using Attribute =
-        std::variant<std::monostate, InstanceAttribute, VirtualAttribute,
-                     OverrideAttribute, StaticAttribute>;
+    using Attribute = std::variant<InstanceAttribute, VirtualAttribute,
+                                   OverrideAttribute, StaticAttribute>;
 
     const Type *getReturnType() const { return returnType; }
     llvm::StringRef getName() const { return name; }
@@ -208,20 +208,24 @@ public:
   public:
     bool isStatic() const { return staticness; }
     const DeclPair &getDecl() const { return decl; }
+    const auto &getInit() const { return initValue; }
 
-    static Field *create(TableGenContext *context, bool staticness,
-                         const DeclPair &decl) {
-      return context->Alloc<Field>(staticness, decl);
+    static Field *
+    create(TableGenContext *context, bool staticness, const DeclPair &decl,
+           const std::optional<std::string> &initValue = std::nullopt) {
+      return context->Alloc<Field>(staticness, decl, initValue);
     }
 
     void print(ComponentPrinter &printer) const;
 
   private:
     friend class ast::tblgen::TableGenContext;
-    Field(bool staticness, const DeclPair &decl)
-        : staticness(staticness), decl(decl) {}
+    Field(bool staticness, const DeclPair &decl,
+          const std::optional<std::string> &initValue)
+        : staticness(staticness), decl(decl), initValue(initValue) {}
     bool staticness;
     DeclPair decl;
+    std::optional<std::string> initValue;
   };
 
   class RawCode : public detail::ComponentBase<RawCode> {
@@ -325,26 +329,57 @@ private:
   DeclPair decl;
 };
 
+class VarInit : public detail::ComponentBase<VarInit> {
+public:
+  const cxx::Type *getType() const { return type; }
+  llvm::ArrayRef<std::string> getAccessVector() const { return accessVector; }
+  llvm::StringRef getName() const { return name; }
+  llvm::StringRef getValue() const { return value; }
+
+  static VarInit *create(TableGenContext *context, const cxx::Type *type,
+                         llvm::ArrayRef<std::string> accessVector,
+                         llvm::StringRef name, llvm::StringRef value) {
+    return context->Alloc<VarInit>(type, accessVector, name, value);
+  }
+
+  void print(ComponentPrinter &printer) const;
+
+private:
+  friend class ast::tblgen::TableGenContext;
+  VarInit(const cxx::Type *type, llvm::ArrayRef<std::string> accessVector,
+          llvm::StringRef name, llvm::StringRef value)
+      : type(type), accessVector(accessVector), name(name), value(value) {}
+
+  const cxx::Type *type;
+  llvm::SmallVector<std::string> accessVector;
+  std::string name;
+  std::string value;
+};
+
 class Function : public detail::ComponentBase<Function> {
 public:
   enum class Access { None, Extern, Static, Inline };
 
   const std::optional<std::string> &getAttribute() const { return attribute; }
-  Access getAccess() const { return accessness; }
-  Type *getReturnType() const { return returnType; }
-  const auto &getNamespaces() const { return namespaces; }
+  Access getAccessness() const { return accessness; }
+  const Type *getReturnType() const { return returnType; }
+  const auto &getAccessVectorAndConstness() const {
+    return accessVectorAndConstness;
+  }
   llvm::StringRef getName() const { return name; }
   llvm::ArrayRef<DeclPair> getParams() const { return params; }
   const std::optional<BodyCode> &getBody() const { return body; }
 
   static Function *
   create(TableGenContext *context, const std::optional<std::string> &attributes,
-         Access accessness, Type *returnType,
-         const std::optional<llvm::SmallVector<std::string>> &namespaces,
+         Access accessness, const Type *returnType,
+         const std::optional<std::pair<llvm::SmallVector<std::string>, bool>>
+             &accessVectorAndConstness,
          llvm::StringRef name, llvm::ArrayRef<DeclPair> params,
          const std::optional<BodyCode> &body) {
     return context->Alloc<Function>(attributes, accessness, returnType,
-                                    namespaces, name, params, body);
+                                    accessVectorAndConstness, name, params,
+                                    body);
   }
 
   void print(ComponentPrinter &printer) const;
@@ -352,16 +387,19 @@ public:
 private:
   friend class ast::tblgen::TableGenContext;
   Function(const std::optional<std::string> &attribute, Access accessness,
-           Type *returnType,
-           const std::optional<llvm::SmallVector<std::string>> &namespaces,
+           const Type *returnType,
+           const std::optional<std::pair<llvm::SmallVector<std::string>, bool>>
+               &accessAndConstness,
            llvm::StringRef name, llvm::ArrayRef<DeclPair> params,
            const std::optional<BodyCode> &body)
       : attribute(attribute), accessness(accessness), returnType(returnType),
-        namespaces(namespaces), name(name.str()), params(params), body(body) {}
+        accessVectorAndConstness(accessAndConstness), name(name.str()),
+        params(params), body(body) {}
   std::optional<std::string> attribute;
   Access accessness;
-  Type *returnType;
-  std::optional<llvm::SmallVector<std::string>> namespaces;
+  const Type *returnType;
+  std::optional<std::pair<llvm::SmallVector<std::string>, bool>>
+      accessVectorAndConstness;
   std::string name;
   llvm::SmallVector<DeclPair> params;
   std::optional<BodyCode> body;

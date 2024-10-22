@@ -45,7 +45,6 @@ TEST_CASE("AST Walk Test" * doctest::test_suite("ast test suite")) {
     auto testAST2 = TestAST1::create({}, &ctx, 3, 4);
     auto testAST3 = TestAST1::create({}, &ctx, 5, 6);
     auto testIf = TestIf::create({}, &ctx, testAST1, testAST2, testAST3);
-
     llvm::SmallVector<AST> asts;
     auto walkResult = testIf.walk([&asts](AST ast) {
       asts.push_back(ast);

@@ -18,6 +18,9 @@ std::optional<DataModel> DataModel::create(TableGenEmitter *emitter,
   const auto &[setName, astName] = name.split('_');
   assert(!setName.empty() && !astName.empty());
 
+  std::optional<llvm::StringRef> mnemonic =
+      record->getValueAsOptionalString("mnemonic");
+
   std::string astImplName = (astName + "Impl").str();
 
   llvm::StringRef namespaceName = record->getValueAsString("namespace");
@@ -46,6 +49,7 @@ std::optional<DataModel> DataModel::create(TableGenEmitter *emitter,
       .Emitter = emitter,
       .SetName = setName,
       .ASTName = astName,
+      .ASTMnemonic = mnemonic,
       .Namespace = namespaceName,
       .Description = description,
       .Parent = parentName,
@@ -89,8 +93,8 @@ createTreeMemberGetterMethod(TableGenContext *context, std::size_t idx,
   std::string getterName = getGetterName(memberName);
 
   auto getterBody = llvm::formatv("return std::get<{0}>(astTreeMember);", idx);
-  cxx::Class::Method::InstanceAttribute getterAttr{.IsConst = true,
-                                                   .Body = {getterBody.str()}};
+  cxx::Class::Method::InstanceAttribute getterAttr{
+      .IsConst = true, .Body = cxx::BodyCode{getterBody.str()}};
 
   return cxx::Class::Method::create(context, viewType, getterName, std::nullopt,
                                     getterAttr);
@@ -106,8 +110,8 @@ createTagMemberGetterMethod(TableGenContext *context, std::size_t idx,
   ss << "get" << llvm::toUpper(tagName[0]) << tagName.drop_front() << "Tag";
 
   auto getterBody = llvm::formatv("return std::get<{0}>(astTag);", idx);
-  cxx::Class::Method::InstanceAttribute getterAttr{.IsConst = true,
-                                                   .Body = {getterBody.str()}};
+  cxx::Class::Method::InstanceAttribute getterAttr{
+      .IsConst = true, .Body = cxx::BodyCode{getterBody.str()}};
 
   return cxx::Class::Method::create(context, viewType, getterName, std::nullopt,
                                     getterAttr);
@@ -129,8 +133,8 @@ createTagMemberSetterMethod(TableGenEmitter *emitter, std::size_t idx,
 
   auto setterBody = llvm::formatv("std::get<{0}>(astTag) = {1};", idx,
                                   cast2ParamTypeExpr(tagName, paramType));
-  cxx::Class::Method::InstanceAttribute setterAttr{.IsConst = false,
-                                                   .Body = {setterBody.str()}};
+  cxx::Class::Method::InstanceAttribute setterAttr{
+      .IsConst = false, .Body = cxx::BodyCode{setterBody.str()}};
   return cxx::Class::Method::create(emitter->getContext(),
                                     emitter->getVoidType(), setterName,
                                     {{tagName.str(), viewType}}, setterAttr);
@@ -146,6 +150,207 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
                            (model.Namespace + "::" + model.ASTName).str(), {});
   cxx::Type *astImplType = cxx::RawType::create(
       emitter->getContext(), (model.Namespace + "::" + astImplName).str(), {});
+  cxx::Type *astImplTypePointer =
+      cxx::PointerType::create(emitter->getContext(), astImplType);
+
+  auto *astImplForwardDecl = cxx::Class::create(
+      emitter->getContext(), cxx::Class::StructOrClass::Class, astImplName,
+      std::nullopt);
+
+  /// tree member declaration as std::tuple
+  auto hasTreeMember = !model.TreeMemberParamNames.empty();
+  llvm::SmallVector<const cxx::Type *> treeMemberElementTypes;
+  llvm::SmallVector<const cxx::Type *> treeMemberViewTypes;
+  llvm::SmallVector<cxx::DeclPair> params;
+
+  if (hasTreeMember) {
+    treeMemberElementTypes.reserve(model.TreeMemberTypePairs.size());
+    treeMemberViewTypes.reserve(model.TreeMemberTypePairs.size());
+    params.reserve(model.TreeMemberTypePairs.size());
+
+    for (const auto &[paramName, typePair] :
+         llvm::zip(model.TreeMemberParamNames, model.TreeMemberTypePairs)) {
+      const auto &[paramType, viewType] = typePair;
+      treeMemberElementTypes.emplace_back(paramType);
+      treeMemberViewTypes.emplace_back(viewType);
+      params.emplace_back(paramName, viewType);
+    }
+  }
+
+  /// tag declaration
+  auto hasTag = !model.TagParamNames.empty();
+  llvm::SmallVector<const cxx::Type *> tagElementTypes;
+  llvm::SmallVector<const cxx::Type *> tagViewTypes;
+
+  if (hasTag) {
+    tagElementTypes.reserve(model.TagTypePairs.size());
+    tagViewTypes.reserve(model.TagTypePairs.size());
+
+    for (const auto &[paramType, viewType] : model.TagTypePairs) {
+      tagElementTypes.emplace_back(paramType);
+      tagViewTypes.emplace_back(viewType);
+    }
+  }
+
+  //==---------------------------------------------------------------------==//
+  /// AST
+  //==---------------------------------------------------------------------==//
+
+  /// using Base::Base
+  cxx::Using::Member usingBaseConstructor{
+      .Namespaces = {"Base"},
+      .Name = {"Base"},
+  };
+  cxx::Using *usingBase =
+      cxx::Using::create(emitter->getContext(), {usingBaseConstructor});
+
+  /// AST name
+  cxx::Class::Field *astMnemonicDecl = cxx::Class::Field::create(
+      emitter->getContext(), true, {"Name", emitter->getllvmStringRefType()},
+      std::nullopt);
+
+  /// tree getter
+  llvm::SmallVector<cxx::Class::Method *> astTreeMemberGetters;
+  if (hasTreeMember) {
+    astTreeMemberGetters.reserve(model.TreeMemberParamNames.size());
+
+    for (const auto &[idx, paramName, viewType] :
+         llvm::enumerate(model.TreeMemberParamNames, treeMemberViewTypes)) {
+      auto getterName = getGetterName(paramName);
+      auto getterBody =
+          llvm::formatv("return getImpl()->get{0}{1}();",
+                        llvm::toUpper(paramName[0]), paramName.drop_front());
+      cxx::Class::Method::InstanceAttribute getterAttr{.IsConst = true,
+                                                       .Body = std::nullopt};
+      cxx::Class::Method *getter =
+          cxx::Class::Method::create(emitter->getContext(), viewType,
+                                     getterName, std::nullopt, getterAttr);
+      astTreeMemberGetters.emplace_back(getter);
+    }
+  }
+  /// tag getter & setter
+  llvm::SmallVector<cxx::Class::Method *> astTagGetters;
+  llvm::SmallVector<cxx::Class::Method *> astTagSetters;
+
+  if (hasTag) {
+    astTagGetters.reserve(model.TreeMemberTypePairs.size());
+    astTagSetters.reserve(model.TreeMemberTypePairs.size());
+
+    for (const auto &[idx, paramName, paramType, viewType] :
+         llvm::enumerate(model.TagParamNames, tagElementTypes, tagViewTypes)) {
+      auto getterName = getGetterName(paramName) + "Tag";
+      auto setterName = getSetterName(paramName) + "Tag";
+
+      auto getterBody =
+          llvm::formatv("return getImpl()->get{0}{1}Tag();",
+                        llvm::toUpper(paramName[0]), paramName.drop_front());
+      cxx::Class::Method::InstanceAttribute getterAttr{.IsConst = true,
+                                                       .Body = std::nullopt};
+      cxx::Class::Method *getter =
+          cxx::Class::Method::create(emitter->getContext(), viewType,
+                                     getterName, std::nullopt, getterAttr);
+
+      auto setterBody = llvm::formatv("getImpl()->set{0}{1}Tag({2});",
+                                      llvm::toUpper(paramName[0]),
+                                      paramName.drop_front(), paramName);
+      cxx::Class::Method::InstanceAttribute setterAttr{.IsConst = false,
+                                                       .Body = std::nullopt};
+      cxx::Class::Method *setter = cxx::Class::Method::create(
+          emitter->getContext(), emitter->getVoidType(), setterName,
+          {{paramName.str(), viewType}}, setterAttr);
+      astTagGetters.emplace_back(getter);
+      astTagSetters.emplace_back(setter);
+    }
+  }
+
+  cxx::Class::Method *astTraversalOrderMethod = nullptr;
+  if (hasTreeMember) {
+    /// traversal order
+    astTraversalOrderMethod = cxx::Class::Method::create(
+        emitter->getContext(), emitter->getConstAutoRefType(), "traversalOrder",
+        {},
+        cxx::Class::Method::InstanceAttribute{.IsConst = true,
+                                              .Body = std::nullopt});
+  }
+
+  /// print method
+  cxx::Class::Method *astPrintMethod = cxx::Class::Method::create(
+      emitter->getContext(), emitter->getVoidType(), "print",
+      {{"ast", astType}, {"printer", emitter->getASTPrinterRef()}},
+      cxx::Class::Method::StaticAttribute{});
+
+  /// create function
+  llvm::SmallVector<cxx::DeclPair> astCreateParam{
+      {"loc", emitter->getllmvSMRangeType()},
+      {"context", emitter->getASTContextPointerType()}};
+  astCreateParam.append(params.begin(), params.end());
+  cxx::Class::Method *astCreateFunc = cxx::Class::Method::create(
+      emitter->getContext(), astType, "create", astCreateParam,
+      cxx::Class::Method::StaticAttribute{});
+
+  /// public block
+  llvm::SmallVector<cxx::Class::ClassMember> astPublicMembers;
+
+  astPublicMembers.emplace_back(usingBase);
+  astPublicMembers.emplace_back(astMnemonicDecl);
+  if (hasTreeMember) {
+    astPublicMembers.append(astTreeMemberGetters.begin(),
+                            astTreeMemberGetters.end());
+  }
+  if (hasTag) {
+    astPublicMembers.append(astTagGetters.begin(), astTagGetters.end());
+    astPublicMembers.append(astTagSetters.begin(), astTagSetters.end());
+  }
+  if (hasTreeMember)
+    astPublicMembers.emplace_back(astTraversalOrderMethod);
+
+  astPublicMembers.emplace_back(astPrintMethod);
+  astPublicMembers.emplace_back(astCreateFunc);
+
+  /// extra class declaration
+  if (!model.ExtraClassDeclaration.empty()) {
+    cxx::Class::RawCode *extraClassDeclaration = cxx::Class::RawCode::create(
+        emitter->getContext(), model.ExtraClassDeclaration);
+    astPublicMembers.emplace_back(extraClassDeclaration);
+  }
+
+  cxx::Class::Block astPublicBlock{.Access = cxx::Class::AccessModifier::Public,
+                                   .Members = astPublicMembers};
+
+  /// class base
+  cxx::Type *classBase = cxx::RawType::create(
+      emitter->getContext(), "::ast::AST::Base",
+      llvm::SmallVector<const cxx::Type *>{
+          astType,
+          cxx::RawType::create(emitter->getContext(), model.Parent, {}),
+          astImplType});
+
+  cxx::Class::ClassImplementation astDefinition{
+      .Blocks = {astPublicBlock},
+      .Bases = {{true, classBase}},
+  };
+  /// class definition
+  cxx::Class *astClass = cxx::Class::create(emitter->getContext(),
+                                            cxx::Class::StructOrClass::Class,
+                                            model.ASTName, astDefinition);
+  cxx::Class *astClassDecl = cxx::Class::create(
+      emitter->getContext(), cxx::Class::StructOrClass::Class, model.ASTName,
+      std::nullopt);
+
+  return std::unique_ptr<ASTDeclModel>(new ASTDeclModel(
+      model.ASTName, astImplName, model.Namespace, model.Description,
+      astClassDecl, astImplForwardDecl, astClass));
+}
+
+std::unique_ptr<ASTDefModel> ASTDefModel::create(const DataModel &model) {
+  TableGenEmitter *emitter = model.Emitter;
+
+  std::string astImplName = (model.ASTName + "Impl").str();
+
+  cxx::Type *astType =
+      cxx::RawType::create(emitter->getContext(), model.ASTName, {});
+  cxx::Type *astImplType = cxx::RawType::create(
+      emitter->getContext(), (model.ASTName + "Impl").str(), {});
   cxx::Type *astImplTypePointer =
       cxx::PointerType::create(emitter->getContext(), astImplType);
 
@@ -230,7 +435,7 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
         emitter->getContext(), emitter->getConstAutoRefType(), "traversalOrder",
         std::nullopt,
         cxx::Class::Method::InstanceAttribute{
-            .IsConst = true, .Body = {"return astTreeMember;"}});
+            .IsConst = true, .Body = cxx::BodyCode{"return astTreeMember;"}});
   }
 
   /// friend class
@@ -301,182 +506,73 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
   cxx::Class *astImplClass =
       cxx::Class::create(emitter->getContext(),
                          cxx::Class::StructOrClass::Class, astImplName, impl);
-  /// class declaration
-  cxx::Class *astImplClassDecl = cxx::Class::create(
-      emitter->getContext(), cxx::Class::StructOrClass::Class, astImplName,
-      std::nullopt);
 
   //==---------------------------------------------------------------------==//
   /// AST
   //==---------------------------------------------------------------------==//
+  llvm::StringRef astMnemonic =
+      model.ASTMnemonic ? *model.ASTMnemonic : model.ASTName;
 
-  /// using Base::Base
-  cxx::Using::Member usingBaseConstructor{
-      .Namespaces = {"Base"},
-      .Name = {"Base"},
-  };
-  cxx::Using *usingBase =
-      cxx::Using::create(emitter->getContext(), {usingBaseConstructor});
-
-  /// tree getter
-  llvm::SmallVector<cxx::Class::Method *> astTreeMemberGetters;
-  if (hasTreeMember) {
-    astTreeMemberGetters.reserve(model.TreeMemberParamNames.size());
-
-    for (const auto &[idx, paramName, viewType] :
-         llvm::enumerate(model.TreeMemberParamNames, treeMemberViewTypes)) {
-      auto getterName = getGetterName(paramName);
-      auto getterBody =
-          llvm::formatv("return getImpl()->get{0}{1}();",
-                        llvm::toUpper(paramName[0]), paramName.drop_front());
-      cxx::Class::Method::InstanceAttribute getterAttr{
-          .IsConst = true, .Body = {getterBody.str()}};
-      cxx::Class::Method *getter =
-          cxx::Class::Method::create(emitter->getContext(), viewType,
-                                     getterName, std::nullopt, getterAttr);
-      astTreeMemberGetters.emplace_back(getter);
-    }
-  }
-  /// tag getter & setter
-  llvm::SmallVector<cxx::Class::Method *> astTagGetters;
-  llvm::SmallVector<cxx::Class::Method *> astTagSetters;
-
-  if (hasTag) {
-    astTagGetters.reserve(model.TreeMemberTypePairs.size());
-    astTagSetters.reserve(model.TreeMemberTypePairs.size());
-
-    for (const auto &[idx, paramName, paramType, viewType] :
-         llvm::enumerate(model.TagParamNames, tagElementTypes, tagViewTypes)) {
-      auto getterName = getGetterName(paramName) + "Tag";
-      auto setterName = getSetterName(paramName) + "Tag";
-
-      auto getterBody =
-          llvm::formatv("return getImpl()->get{0}{1}Tag();",
-                        llvm::toUpper(paramName[0]), paramName.drop_front());
-      cxx::Class::Method::InstanceAttribute getterAttr{
-          .IsConst = true, .Body = {getterBody.str()}};
-      cxx::Class::Method *getter =
-          cxx::Class::Method::create(emitter->getContext(), viewType,
-                                     getterName, std::nullopt, getterAttr);
-
-      auto setterBody = llvm::formatv("getImpl()->set{0}{1}Tag({2});",
-                                      llvm::toUpper(paramName[0]),
-                                      paramName.drop_front(), paramName);
-      cxx::Class::Method::InstanceAttribute setterAttr{
-          .IsConst = false, .Body = {setterBody.str()}};
-      cxx::Class::Method *setter = cxx::Class::Method::create(
-          emitter->getContext(), emitter->getVoidType(), setterName,
-          {{paramName.str(), viewType}}, setterAttr);
-      astTagGetters.emplace_back(getter);
-      astTagSetters.emplace_back(setter);
-    }
-  }
-
-  cxx::Class::Method *astTraversalOrderMethod = nullptr;
-  if (hasTreeMember) {
-    /// traversal order
-    astTraversalOrderMethod = cxx::Class::Method::create(
-        emitter->getContext(), emitter->getConstAutoRefType(), "traversalOrder",
-        {},
-        cxx::Class::Method::InstanceAttribute{
-            .IsConst = true, .Body = {"return getImpl()->traversalOrder();"}});
-  }
-
-  /// print method
-  cxx::Class::Method *astPrintMethod = cxx::Class::Method::create(
-      emitter->getContext(), emitter->getVoidType(), "print",
-      {{"ast", astType}, {"printer", emitter->getASTPrinterRef()}},
-      cxx::Class::Method::StaticAttribute{});
-
-  /// create function
-  llvm::SmallVector<cxx::DeclPair> astCreateParam{
-      {"loc", emitter->getllmvSMRangeType()},
-      {"context", emitter->getASTContextPointerType()}};
-  astCreateParam.append(params.begin(), params.end());
-  cxx::Class::Method *astCreateFunc = cxx::Class::Method::create(
-      emitter->getContext(), astType, "create", astCreateParam,
-      cxx::Class::Method::StaticAttribute{});
-
-  /// public block
-  llvm::SmallVector<cxx::Class::ClassMember> astPublicMembers;
-
-  astPublicMembers.emplace_back(usingBase);
-  if (hasTreeMember) {
-    astPublicMembers.append(astTreeMemberGetters.begin(),
-                            astTreeMemberGetters.end());
-  }
-  if (hasTag) {
-    astPublicMembers.append(astTagGetters.begin(), astTagGetters.end());
-    astPublicMembers.append(astTagSetters.begin(), astTagSetters.end());
-  }
-  if (hasTreeMember)
-    astPublicMembers.emplace_back(astTraversalOrderMethod);
-
-  astPublicMembers.emplace_back(astPrintMethod);
-  astPublicMembers.emplace_back(astCreateFunc);
-
-  /// extra class declaration
-  if (!model.ExtraClassDeclaration.empty()) {
-    cxx::Class::RawCode *extraClassDeclaration = cxx::Class::RawCode::create(
-        emitter->getContext(), model.ExtraClassDeclaration);
-    astPublicMembers.emplace_back(extraClassDeclaration);
-  }
-
-  cxx::Class::Block astPublicBlock{.Access = cxx::Class::AccessModifier::Public,
-                                   .Members = astPublicMembers};
-
-  /// class base
-  cxx::Type *classBase = cxx::RawType::create(
-      emitter->getContext(), "::ast::AST::Base",
-      llvm::SmallVector<const cxx::Type *>{
-          astType,
-          cxx::RawType::create(emitter->getContext(), model.Parent, {}),
-          astImplType});
-
-  cxx::Class::ClassImplementation astDefinition{
-      .Blocks = {astPublicBlock},
-      .Bases = {{true, classBase}},
-  };
-  /// class definition
-  cxx::Class *astClass = cxx::Class::create(emitter->getContext(),
-                                            cxx::Class::StructOrClass::Class,
-                                            model.ASTName, astDefinition);
-  cxx::Class *astClassDecl = cxx::Class::create(
-      emitter->getContext(), cxx::Class::StructOrClass::Class, model.ASTName,
-      std::nullopt);
-
-  return std::unique_ptr<ASTDeclModel>(new ASTDeclModel(
-      model.ASTName, astImplName, model.Namespace, model.Description,
-      astClassDecl, astImplClassDecl, astClass, astImplClass));
-}
-
-std::unique_ptr<ASTDefModel> ASTDefModel::create(const DataModel &model) {
-  TableGenEmitter *emitter = model.Emitter;
-
-  std::string astImplName = (model.ASTName + "Impl").str();
-
-  cxx::Type *astType =
-      cxx::RawType::create(emitter->getContext(), model.ASTName, {});
-  cxx::Type *astImplType = cxx::RawType::create(
-      emitter->getContext(), (model.ASTName + "Impl").str(), {});
-  cxx::Type *astImplTypePointer =
-      cxx::PointerType::create(emitter->getContext(), astImplType);
-
-  llvm::SmallVector<const cxx::Type *> treeParamTypes;
-  llvm::SmallVector<const cxx::Type *> treeViewTypes;
-  treeParamTypes.reserve(model.TreeMemberParamNames.size());
-  treeViewTypes.reserve(model.TreeMemberParamNames.size());
-
-  for (const auto &[paramType, viewType] : model.TreeMemberTypePairs) {
-    treeParamTypes.emplace_back(paramType);
-    treeViewTypes.emplace_back(viewType);
-  }
+  auto *nameInit = cxx::VarInit::create(
+      emitter->getContext(), emitter->getllvmStringRefType(),
+      {model.ASTName.str()}, "Name",
+      llvm::formatv(R"("{0}")", astMnemonic).str());
 
   llvm::SmallVector<cxx::DeclPair> param;
   param.reserve(model.TreeMemberParamNames.size());
   for (const auto &[paramName, viewType] :
-       llvm::zip(model.TreeMemberParamNames, treeViewTypes)) {
+       llvm::zip(model.TreeMemberParamNames, treeMemberViewTypes)) {
     param.emplace_back(paramName, viewType);
+  }
+
+  llvm::SmallVector<std::string> astAccess{model.ASTName.str()};
+  std::pair<llvm::SmallVector<std::string>, bool> accessVectAndConst{astAccess,
+                                                                     true};
+  std::pair<llvm::SmallVector<std::string>, bool> accessVectAndNonConst{
+      astAccess, false};
+
+  /// ast tree member getters
+  llvm::SmallVector<cxx::Function *> astTreeMemberGetters;
+  if (hasTreeMember) {
+    astTreeMemberGetters.reserve(model.TreeMemberParamNames.size());
+    for (const auto &[idx, paramName, viewType] :
+         llvm::enumerate(model.TreeMemberParamNames, treeMemberViewTypes)) {
+      auto getterName = getGetterName(paramName);
+      auto getterBody = llvm::formatv("return getImpl()->{0}();", getterName);
+
+      auto *getter = cxx::Function::create(
+          emitter->getContext(), std::nullopt, cxx::Function::Access::None,
+          viewType, accessVectAndConst, getterName, std::nullopt,
+          cxx::BodyCode{getterBody.str()});
+      astTreeMemberGetters.emplace_back(getter);
+    }
+  }
+
+  llvm::SmallVector<cxx::Function *> astTagGetters;
+  llvm::SmallVector<cxx::Function *> astTagSetters;
+  if (hasTag) {
+    astTagGetters.reserve(model.TagParamNames.size());
+    astTagSetters.reserve(model.TagParamNames.size());
+    for (const auto &[idx, tagName, typePair] :
+         llvm::enumerate(model.TagParamNames, model.TagTypePairs)) {
+      const auto &[paramType, viewType] = typePair;
+      auto getterName = getGetterName(tagName) + "Tag";
+      auto getterBody = llvm::formatv("return getImpl()->{0}();", getterName);
+      auto *getter = cxx::Function::create(
+          emitter->getContext(), std::nullopt, cxx::Function::Access::None,
+          viewType, accessVectAndConst, getterName, std::nullopt,
+          cxx::BodyCode{getterBody.str()});
+
+      auto setterName = getSetterName(tagName) + "Tag";
+      auto setterBody =
+          llvm::formatv("getImpl()->{0}({1});", setterName, tagName);
+      auto *setter = cxx::Function::create(
+          emitter->getContext(), std::nullopt, cxx::Function::Access::None,
+          emitter->getVoidType(), accessVectAndNonConst, setterName,
+          {{tagName.str(), viewType}}, cxx::BodyCode{setterBody.str()});
+      astTagGetters.emplace_back(getter);
+      astTagSetters.emplace_back(setter);
+    }
   }
 
   /// ast create function
@@ -496,21 +592,25 @@ std::unique_ptr<ASTDefModel> ASTDefModel::create(const DataModel &model) {
 
   auto *astCreateFunc = cxx::Function::create(
       emitter->getContext(), std::nullopt, cxx::Function::Access::None, astType,
-      llvm::SmallVector<std::string>{model.ASTName.str()}, "create",
-      createParam, cxx::BodyCode{createBody.str()});
+      accessVectAndNonConst, "create", createParam,
+      cxx::BodyCode{createBody.str()});
 
   /// ast impl create function
   llvm::SmallVector<cxx::DeclPair> implCreateParam{
       {"context", emitter->getASTContextPointerType()}};
   implCreateParam.append(param.begin(), param.end());
 
+  llvm::SmallVector<std::string> astImplAccess{astImplName};
+  std::pair<llvm::SmallVector<std::string>, bool> astImplAccessAndNonConst{
+      astImplAccess, false};
+
   auto implCreateBody =
       llvm::formatv("return context->Alloc<{0}>({1});", astImplName,
                     llvm::join(model.TreeMemberParamNames, ", "));
   auto *astImplCreateFunc = cxx::Function::create(
       emitter->getContext(), std::nullopt, cxx::Function::Access::None,
-      astImplTypePointer, llvm::SmallVector<std::string>{astImplName}, "create",
-      implCreateParam, cxx::BodyCode{implCreateBody.str()});
+      astImplTypePointer, astImplAccessAndNonConst, "create", implCreateParam,
+      cxx::BodyCode{implCreateBody.str()});
 
   /// ast impl constructor
   llvm::SmallVector<std::pair<std::string, std::string>> initializerList;
@@ -518,7 +618,7 @@ std::unique_ptr<ASTDefModel> ASTDefModel::create(const DataModel &model) {
   llvm::raw_string_ostream initExprStream(initializeExpr);
 
   for (const auto &[idx, paramName, paramType] :
-       llvm::enumerate(model.TreeMemberParamNames, treeParamTypes)) {
+       llvm::enumerate(model.TreeMemberParamNames, treeMemberElementTypes)) {
     if (idx != 0)
       initExprStream << ", ";
     initExprStream << cast2ParamTypeExpr(paramName, paramType);
@@ -533,10 +633,11 @@ std::unique_ptr<ASTDefModel> ASTDefModel::create(const DataModel &model) {
       cxx::ClassConstructor::create(emitter->getContext(), std::nullopt,
                                     astImplName, param, constructorImplement);
 
-  return std::unique_ptr<ASTDefModel>(
-      new ASTDefModel(model.ASTName, astImplName, model.Namespace,
-                      model.Description, model.ExtraClassDefinition,
-                      astImplCreateFunc, astImplConstructor, astCreateFunc));
+  return std::unique_ptr<ASTDefModel>(new ASTDefModel(
+      model.ASTName, astImplName, model.Namespace, model.Description,
+      model.ExtraClassDefinition, astImplClass, nameInit, astTreeMemberGetters,
+      astTagGetters, astTagSetters, astImplCreateFunc, astImplConstructor,
+      astCreateFunc));
 }
 
 } // namespace ast::tblgen

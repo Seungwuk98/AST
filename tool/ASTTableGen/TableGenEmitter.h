@@ -45,6 +45,7 @@ public:
   const cxx::Type *getConstAutoRefType() const { return constAutoRefType; }
   const cxx::Type *getASTBuilderType() const { return astBuilderType; }
   const cxx::Type *getllmvSMRangeType() const { return llvmSMRangeType; }
+  const cxx::Type *getllvmStringRefType() const { return llvmStringRefType; }
 
 private:
   llvm::raw_ostream &os;
@@ -62,6 +63,7 @@ private:
   const cxx::Type *constAutoRefType;
   const cxx::Type *astBuilderType;
   const cxx::Type *llvmSMRangeType;
+  const cxx::Type *llvmStringRefType;
 };
 
 } // namespace ast::tblgen

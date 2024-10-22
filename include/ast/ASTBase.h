@@ -26,7 +26,8 @@ public:
   template <typename... Args>
   static ConcreteType create(llvm::SMRange range, ASTContext *ctx,
                              Args &&...args) {
-    return ASTBuilder::create<ConcreteType>(range, ctx,
+    auto ctorFn = ASTBuilder::createCtorFn<ImplType>(range);
+    return ASTBuilder::create<ConcreteType>(ctx, ctorFn,
                                             std::forward<Args>(args)...);
   }
 
@@ -73,7 +74,14 @@ public:
     };
   }
 
-private:
+  static const auto getNameFn() {
+    return []() {
+      if constexpr (HasASTName<ConcreteType>)
+        return ConcreteType::Name;
+      else
+        return "<<Unspecified AST Name>>";
+    };
+  }
 };
 
 } // namespace ast

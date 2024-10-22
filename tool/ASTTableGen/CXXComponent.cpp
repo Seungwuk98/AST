@@ -75,8 +75,14 @@ void Class::Method::print(ComponentPrinter &printer) const {
         if constexpr (std::is_same_v<T, InstanceAttribute>) {
           printFunction();
           if (attr.IsConst)
-            printer.OS() << " const ";
-          bodyCodePrint(printer, attr.Body);
+            printer.OS() << " const";
+          else
+            printer.OS() << ' ';
+
+          if (attr.Body)
+            bodyCodePrint(printer, *attr.Body);
+          else /* declaration */
+            printer.OS() << ';';
         } else if constexpr (std::is_same_v<T, VirtualAttribute>) {
           printer.OS() << "virtual ";
           printFunction();
@@ -95,16 +101,13 @@ void Class::Method::print(ComponentPrinter &printer) const {
             bodyCodePrint(printer, *attr.Body);
           else
             printer.OS() << ';';
-        } else if constexpr (std::is_same_v<T, StaticAttribute>) {
+        } else /* StaticAttribute */ {
           printer.OS() << "static ";
           printFunction();
           if (attr.Body)
             bodyCodePrint(printer, *attr.Body);
           else
             printer.OS() << ';';
-        } else /* monostate -> Declaration */ {
-          printFunction();
-          printer.OS() << ';';
         }
       },
       getAttribute());
@@ -147,7 +150,10 @@ void Class::Field::print(ComponentPrinter &printer) const {
   if (isStatic())
     printer.OS() << "static ";
   const auto &[name, type] = getDecl();
-  printer.OS() << type->toString() << ' ' << name << ';';
+  printer.OS() << type->toString() << ' ' << name;
+  if (getInit())
+    printer.OS() << " = " << *getInit();
+  printer.OS() << ';';
 }
 
 void Class::RawCode::print(ComponentPrinter &printer) const {
@@ -174,11 +180,18 @@ void VarDecl::print(ComponentPrinter &printer) const {
   printer.OS() << type->toString() << ' ' << name << ';';
 }
 
+void VarInit::print(ComponentPrinter &printer) const {
+  printer.OS() << getType()->toString() << ' ';
+  for (const auto &access : getAccessVector())
+    printer.OS() << access << "::";
+  printer.OS() << getName() << " = " << getValue() << ';';
+}
+
 void Function::print(ComponentPrinter &printer) const {
   if (getAttribute()) {
     printer.OS() << "[[" << getAttribute() << "]]";
   }
-  switch (getAccess()) {
+  switch (getAccessness()) {
   case Access::Extern:
     printer.OS() << "extern ";
     break;
@@ -192,9 +205,12 @@ void Function::print(ComponentPrinter &printer) const {
     break;
   }
   printer.OS() << getReturnType()->toString() << ' ';
-  if (getNamespaces())
-    for (const auto &access : *getNamespaces())
+  bool printConst = false;
+  if (getAccessVectorAndConstness()) {
+    for (const auto &access : getAccessVectorAndConstness()->first)
       printer.OS() << access << "::";
+    printConst = getAccessVectorAndConstness()->second;
+  }
   printer.OS() << getName() << '(';
   for (auto I = getParams().begin(), E = getParams().end(); I != E; ++I) {
     if (I != getParams().begin())
@@ -203,6 +219,8 @@ void Function::print(ComponentPrinter &printer) const {
     printer.OS() << paramType->toString() << ' ' << paramName;
   }
   printer.OS() << ')';
+  if (printConst)
+    printer.OS() << " const";
   if (getBody()) {
     bodyCodePrint(printer, *getBody());
   } else
