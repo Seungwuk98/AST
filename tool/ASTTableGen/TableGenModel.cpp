@@ -266,9 +266,13 @@ std::unique_ptr<ASTDeclModel> ASTDeclModel::create(const DataModel &model) {
   cxx::Class::Method *astTraversalOrderMethod = nullptr;
   if (hasTreeMember) {
     /// traversal order
+    auto treeMemberType =
+        createTupleType(emitter->getContext(), treeMemberElementTypes);
+    auto treeMemberConstRefType =
+        cxx::createConstReferenceType(emitter->getContext(), treeMemberType);
+
     astTraversalOrderMethod = cxx::Class::Method::create(
-        emitter->getContext(), emitter->getConstAutoRefType(), "traversalOrder",
-        {},
+        emitter->getContext(), treeMemberConstRefType, "traversalOrder", {},
         cxx::Class::Method::InstanceAttribute{.IsConst = true,
                                               .Body = std::nullopt});
   }
